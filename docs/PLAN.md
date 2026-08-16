@@ -3,7 +3,7 @@
 **Owner:** Pete Gombert (sole user, sole decision-maker)
 **Repo:** `pgombert/Tradeit`
 **Deploys to:** `trade.meadowlark.*` (GCP project `meadowlark-492419`)
-**Status:** Rev 2, 2026-08-16. Decisions locked. Phase 0 ready to start.
+**Status:** Rev 3, 2026-08-16. Target revised to 2x. Phase 0 ready to start.
 
 ---
 
@@ -15,7 +15,8 @@
 | **Account** | Schwab retirement account |
 | **Broker** | Charles Schwab — Trader API, free with the account |
 | **Capital** | $100,000 |
-| **Ruin budget** | The full $100,000 |
+| **Target** | $200,000 in one year — +100%, or **+1.34% per week** |
+| **Ruin budget** | The full $100,000 (worth revisiting — see §1) |
 | **Newsletters** | None yet — starting set proposed in §3 |
 | **Domain** | `trade.meadowlark.*` (confirm TLD at Phase 0) |
 
@@ -38,60 +39,87 @@ Pete reads the brief, decides, and enters every order himself.
 
 ---
 
-## 1. What "stocks and ETFs only" means for the target
+## 1. The target, and what it now requires
 
-You've accepted the risk and set the ruin budget at the full $100k, so this section
-is about mechanics, not caution. But ruling out options changes *where the return
-has to come from*, and that has direct design consequences.
+**$100k → $200k in a year is +1.34% per week**, compounded across 52 weeks
+(2^(1/52) − 1). Dropping from 10x to 2x moves this out of the tail of the
+distribution and into the range a disciplined system can actually be built for. It
+also changes the design, not just the number on the dashboard.
 
-### The only leverage available is leveraged ETFs
+### What the earlier target demanded, and no longer does
 
-No options and no margin (see §2) means the sole source of leverage is 2x/3x
-exchange-traded products — which are, unambiguously, ETFs and therefore in scope:
+At 3x on a broad index a *perfect* forecaster earns roughly 4.5% a week, because
+SPY's typical absolute weekly move is about 1.5%. The 10x target was 4.53% a week —
+so a 100% hit rate landed at the target before costs and below it after. Leverage
+wasn't optional there; it was the only way the arithmetic closed at all.
 
-- **Index:** TQQQ / SQQQ (3x Nasdaq), UPRO / SPXU (3x S&P), TNA / TZA (3x Russell)
-- **Sector:** SOXL / SOXS (3x semis), LABU / LABD (3x biotech), FAS / FAZ (3x
-  financials), ERX / ERY (3x energy)
-- **Unleveraged inverse**, for bearish tilt without 3x: SH, PSQ, RWM
-- **Single-stock 2x** (NVDL, TSLL and similar) — allowed, but see the liquidity
-  note below
+At +1.34% a week, that pressure is gone. Here's what actually clears the bar:
 
-### The arithmetic, worked through
+| Approach | Payoff shape | Hit rate needed |
+|---|---|---|
+| 3x index, full deployment | symmetric ±4.5% | **65%** |
+| Any instrument, tight stops | +4% / −2% | **56%** |
+| Any instrument, wider runners | +6% / −2% | **42%** |
 
-At 3x on a broad index, a *perfect* forecaster earns about 4.5% a week — SPY's
-typical absolute weekly move is roughly 1.5%. The target is 4.53% a week. So on
-index products, **a 100% hit rate lands you at the target before costs and below it
-after.** Hit rate alone cannot get there. That isn't a discouraging framing; it's a
-design constraint, and it points at exactly two levers:
+That last row is the important one. A 42% hit rate with a 3:1 payoff is an ordinary
+trend-following profile, not an exceptional one — and it clears +100% a year. So:
 
-1. **Payoff asymmetry.** Cutting losers at −2% while letting winners run to +8%
-   produces the required expectancy at a hit rate in the low 60s. Which means the
-   stop discipline in Stage 5 is not risk management bolted on the side — **it is
-   the primary return driver.** Build it first, tune it hardest.
-2. **Instrument volatility.** Semis move about twice what the S&P does. SOXL's
-   typical weekly swing is 9%+, not 4.5%. The aggressive sleeve should therefore
-   concentrate in high-beta *sector* 3x products rather than TQQQ and UPRO.
+1. **Payoff asymmetry is still the primary return driver.** Cutting losers fast and
+   letting winners run does more work than being right more often. The stop
+   discipline in Stage 5 is the engine, not the safety rail. Build it first, tune it
+   hardest.
+2. **Leverage becomes optional.** An unleveraged book of liquid equities and sector
+   ETFs, run with real stop discipline, can plausibly reach +1.34% a week. Leveraged
+   products become a way to reach the target with *less* capital deployed rather
+   than a requirement to reach it at all.
 
-A realistic outcome for a good version of this system is somewhere in the +40% to
-+100% annual range. The 10x is a tail of that distribution rather than its center.
-The dashboard shows both: expectancy per unit of risk as the headline, the 10x pace
-drawn alongside it.
+To be clear about the ambition: +100% a year is still roughly ten times the S&P's
+long-run average and would be a strong year for a professional fund. It is hard. It
+is no longer arithmetically cornered.
 
-### Leveraged ETF mechanics the risk engine must model
+### Consequences of the change
+
+**Leverage gets capped instead of centered.** The earlier plan proposed a core
+sleeve and an aggressive sleeve. That split is now unnecessary complexity. Replace
+it with a single rule in Stage 5: **leveraged products are eligible only in the
+Risk-On Trend regime, and never exceed 20% of book.** Simpler, and it closes the
+open question the previous revision left hanging.
+
+**Financing drag now matters proportionally more.** A 3x fund finances 2x the
+notional at roughly SOFR plus a spread, on top of a ~0.9% expense ratio — 8–11% a
+year. Against a 900% target that was noise. Against a 100% target it's a tenth of
+the whole objective, which is a second independent reason to use leveraged products
+selectively rather than as the default expression.
+
+**The circuit breakers become real.** At the old target the −10% / −20% / −30%
+breakers were nominal, because you had to keep swinging regardless. At +1.34% a week
+they're genuinely protective, and a −25% drawdown no longer means the year is lost —
+recovering it costs about six months of on-target performance rather than being
+mathematically out of reach.
+
+**The ruin budget is worth revisiting.** You set it at the full $100k when the
+target required accepting ruin. It no longer does. I'd suggest a maximum drawdown
+limit — 25% feels right — as the real operating constraint, with the full amount
+remaining the theoretical worst case rather than the working assumption. Your call,
+and nothing blocks on it.
+
+### The leveraged universe, when it is used
+
+- **Index:** TQQQ / SQQQ, UPRO / SPXU, TNA / TZA
+- **Sector:** SOXL / SOXS (semis), LABU / LABD (biotech), FAS / FAZ (financials)
+- **Unleveraged inverse**, for a bearish tilt without 3x: SH, PSQ, RWM
+- **Single-stock 2x** (NVDL, TSLL) — permitted, but most fail the liquidity floor
+
+Mechanics the risk engine models regardless:
 
 - **Daily reset means path dependency.** Over five trading days in a trending tape
   the drag is small; in a chopping tape it compounds against you regardless of
-  direction. **Design rule: the regime classifier gates the leveraged sleeve
-  entirely — no 3x positions in "Chop."** This falls straight out of the constraint
-  and is one of the most valuable rules in the system.
-- **Embedded financing.** A 3x fund finances 2x the notional at roughly SOFR plus a
-  spread, on top of a ~0.9% expense ratio — call it 8–11% a year of drag at current
-  rates. It goes in the expectancy model explicitly, not as a rounding error.
-- **Liquidity floor.** Only leveraged products above ~$5M average daily dollar
-  volume. Most single-stock leveraged ETFs fail this and carry punishing spreads.
+  direction. **The regime classifier gates leveraged products entirely — none in
+  "Chop."**
+- **Liquidity floor.** Nothing below ~$5M average daily dollar volume. Most
+  single-stock leveraged ETFs fail this and carry punishing spreads.
 - **Schwab paperwork.** Schwab requires an acknowledgment before trading leveraged
-  and inverse products. Worth signing during Phase 0 so it isn't discovered in
-  week 5.
+  and inverse products. Sign it in Phase 0, not in week 5.
 
 ---
 
@@ -170,7 +198,7 @@ data* rather than picks, which is what a dossier can actually use.
 | **SentimenTrader** | Quantified sentiment and breadth studies published as *historical base rates* — "when this setup occurred, here's the distribution of forward returns." That's already dossier-shaped. The single best fit for this system. | ~$100/mo |
 | **Bespoke Investment Group** | Data-driven, honest about misses, strong seasonality and breadth work. | ~$100/mo |
 | **Quantifiable Edges** (Rob Hanna) | Statistical short-term edges at exactly this holding period. | ~$60/mo |
-| **SpotGamma** or **Menthor Q** | Dealer options positioning. Relevant even though we trade no options — dealer gamma drives index behavior week to week, which is what the leveraged sleeve rides. | $100–250/mo |
+| **SpotGamma** or **Menthor Q** | Dealer options positioning. Relevant even though we trade no options — dealer gamma drives index behavior week to week, which is what the leveraged positions ride. | $100–250/mo |
 
 ### Catalysts and earnings — feeds Stage 1
 
@@ -254,8 +282,8 @@ The Sunday job chain, unchanged in shape from Rev 1 but now instrument-aware:
 
 **Stage 0 — Regime classification** *(code)*. Trend, VIX level and term structure,
 credit spreads, 2s10s, breadth → **Risk-On Trend / Chop / Risk-Off / Crisis**. Sets
-the week's risk budget before any candidate is examined, and — new in this revision
-— **gates the leveraged sleeve entirely**, which is off in Chop.
+the week's risk budget before any candidate is examined, and **gates leveraged
+products entirely** — they are eligible only in Risk-On Trend.
 
 **Stage 1 — Candidate generation** *(code)*. 20–40 names with provenance: momentum
 leaders, catalysts inside the window, insider clusters, research-letter consensus and
@@ -278,11 +306,13 @@ logged with cause of death, which over time is as valuable as the trades.
 **Stage 5 — Portfolio construction** *(code, no AI)*. Fractional Kelly sizing under
 a hard per-position cap; correlation and sector caps so five names aren't one bet;
 weekly risk bounded by the Stage 0 regime; direction-to-instrument translation
-(bearish → inverse ETF, high-conviction + trending regime → sector 3x); settled-cash
-check against the T+1 ledger. **Every position gets a stop and a mandatory exit date
-at entry** — and per §1, the stop is the return driver, not a safety net. Circuit
-breakers: −10% week halves next week's size, −20% from peak pauses trading for a
-review, −30% is a full stop and rebuild.
+(bearish → inverse ETF); **leveraged products only in Risk-On Trend and never above
+20% of book**; settled-cash check against the T+1 ledger. **Every position gets a
+stop and a mandatory exit date at entry** — and per §1, the stop is the return
+driver, not a safety net, so the default shape is a tight stop against a wider
+runner. Circuit breakers: −10% week halves next week's size, −20% from peak pauses
+trading for a review, −25% is the drawdown limit proposed in §1, −30% is a full stop
+and rebuild.
 
 **Stage 6 — The Sunday brief** *(you)*. Regime call and why, risk budget, ranked
 trades with size/entry/stop/exit, what changed, **what we got wrong last week**, open
@@ -307,11 +337,27 @@ rather than merely accumulate.
 | **3** | Analyst pass, red team pass, validation gate | First full brief |
 | **4** | Risk engine, instrument translation, settled-cash ledger, circuit breakers, approval flow | **Paper trading begins** |
 | **5–8** | Paper trade live. Attribution dashboard. Backtest the screens against Schwab history. Cut sources that don't earn their place | Four-plus weeks of honest track record |
-| **9** | Go / no-go against real numbers | Real capital, if expectancy is positive |
+| **9** | Go / no-go against real numbers | Real capital, if the gate below passes |
 
-The paper-trading gate costs about a tenth of the year and is what makes the
-attribution data in Stage 7 trustworthy — without it there's no way to tell a bad
-system from a bad month when the first drawdown lands.
+### The go/no-go gate, now that the target is a real number
+
++1.34% a week makes Phase 9 concrete instead of a judgment call. But be clear about
+what six weeks of paper trading can and cannot establish: with a weekly standard
+deviation around 3%, distinguishing a +1.34%/week system from a flat one at any
+statistical confidence takes roughly **six months**, not six weeks. Six data points
+cannot prove the return rate.
+
+So the gate is a **process and disaster filter**, not proof of edge:
+
+- Expectancy is positive, and the payoff ratio is at or above 2:1
+- Every stop was honored — no widened stops, no "just one more day"
+- The regime classifier's calls look defensible in hindsight
+- Attribution shows at least one source or signal type contributing something
+- No week breached the risk budget
+
+Pass all five and real capital goes in, with the understanding that the first six
+*months* are still the real evaluation period and position sizing stays at the low
+end until then.
 
 ---
 
@@ -329,13 +375,18 @@ system from a bad month when the first drawdown lands.
 Polygon's $199 is gone with options. Tiingo (~$50) only if Schwab's history proves
 too thin for backtesting. Redis is optional at Phase 0.
 
+At the top of that range the stack costs about $2,800 a year — **2.8% of capital,
+so roughly three points of the 100% target.** Worth keeping in view when adding a
+subscription: a $250/mo data feed has to earn back three points a year before it
+contributes anything.
+
 ---
 
 ## 8. What's still open
 
 1. **The TLD** for `trade.meadowlark.*` — one DNS record, resolved at Phase 0.
-2. **Whether the aggressive sleeve exists at all.** §1 argues the return has to come
-   from sector 3x products with asymmetric stops. Splitting into a core sleeve and a
-   3x sleeve isn't about preserving capital — you've set the ruin budget at the full
-   amount — it's about not blowing up in week 6 with no attribution data to show for
-   it. Worth deciding before Phase 4, not before Phase 0.
+2. **The drawdown limit.** §1 suggests 25% as the real operating constraint now that
+   the target no longer requires accepting ruin. Confirm or override before Phase 4.
+
+The sleeve question from the previous revision is closed — the 2x target replaces it
+with a simpler rule: leveraged products only in Risk-On Trend, capped at 20% of book.
