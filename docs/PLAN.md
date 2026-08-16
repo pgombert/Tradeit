@@ -3,7 +3,7 @@
 **Owner:** Pete Gombert (sole user, sole decision-maker)
 **Repo:** `pgombert/Tradeit`
 **Deploys to:** `trade.meadowlark.*` (GCP project `meadowlark-492419`)
-**Status:** Rev 3, 2026-08-16. Target revised to 2x. Phase 0 ready to start.
+**Status:** Rev 4, 2026-08-16. Drawdown set at $30k. **Phase 0 built.**
 
 ---
 
@@ -16,7 +16,7 @@
 | **Broker** | Charles Schwab — Trader API, free with the account |
 | **Capital** | $100,000 |
 | **Target** | $200,000 in one year — +100%, or **+1.34% per week** |
-| **Ruin budget** | The full $100,000 (worth revisiting — see §1) |
+| **Max drawdown** | **$30,000** — hard floor at $70,000 |
 | **Newsletters** | None yet — starting set proposed in §3 |
 | **Domain** | `trade.meadowlark.*` (confirm TLD at Phase 0) |
 
@@ -97,11 +97,20 @@ they're genuinely protective, and a −25% drawdown no longer means the year is 
 recovering it costs about six months of on-target performance rather than being
 mathematically out of reach.
 
-**The ruin budget is worth revisiting.** You set it at the full $100k when the
-target required accepting ruin. It no longer does. I'd suggest a maximum drawdown
-limit — 25% feels right — as the real operating constraint, with the full amount
-remaining the theoretical worst case rather than the working assumption. Your call,
-and nothing blocks on it.
+**The drawdown limit is $30,000.** Set 2026-08-16. That maps cleanly onto the
+existing breaker ladder in thirds, so the numbers in Stage 5 are no longer
+arbitrary percentages — they are stops on the way to a floor Pete chose:
+
+| Equity | Drawdown | What happens |
+|---|---|---|
+| $90,000 | $10,000 | Next week's position sizes halve |
+| $80,000 | $20,000 | Trading pauses for a week; full review |
+| **$70,000** | **$30,000** | **Hard stop. Program ends, rebuild from scratch.** |
+
+Recovering a $20k drawdown costs about six months of on-target performance — real,
+but not fatal. This lives in code in `packages/shared/src/types/risk.ts` and is
+driven by `STARTING_CAPITAL` and `MAX_DRAWDOWN` in the environment, so the engine
+and the dashboard cannot drift apart.
 
 ### The leveraged universe, when it is used
 
@@ -384,9 +393,63 @@ contributes anything.
 
 ## 8. What's still open
 
-1. **The TLD** for `trade.meadowlark.*` — one DNS record, resolved at Phase 0.
-2. **The drawdown limit.** §1 suggests 25% as the real operating constraint now that
-   the target no longer requires accepting ruin. Confirm or override before Phase 4.
+1. **The TLD** for `trade.meadowlark.*` — Pete is setting up DNS. The Firebase
+   Hosting site is `tradeit-prod`; the custom domain gets attached to it.
 
-The sleeve question from the previous revision is closed — the 2x target replaces it
-with a simpler rule: leveraged products only in Risk-On Trend, capped at 20% of book.
+Both earlier open items are closed: the sleeve question (replaced by "leveraged
+products only in Risk-On Trend, capped at 20% of book") and the drawdown limit
+(set at $30,000).
+
+---
+
+## 9. Phase 0 — what was built
+
+Committed and running. `npm run dev` brings up the whole thing.
+
+**Monorepo** — `packages/shared` (types, FRED series list, risk maths),
+`backend` (Express 5 + Prisma + Postgres, port 4002), `frontend` (React 19 + Vite,
+port 3002). Local Postgres 5434, Redis 6381.
+
+**Database** — eight tables: `users`, `securities`, `price_bars`, `econ_series`,
+`econ_points`, `observations`, `collector_runs`, plus enums. All money and market
+values are `Decimal`. The `observations` table is the signal bus described in §5,
+unique on `(source, source_ref)` so every collector is restartable.
+
+**Auth** — email and password with JWT, and a hard allowlist re-checked on every
+request, not just at login. No signup route, no password reset, no invites.
+`npm run db:seed` creates the one account and prints a generated password once.
+
+**FRED collector** — pulls the twelve series in §5 (curve, credit spreads, VIX,
+financial conditions, claims, CPI). Idempotent: upserts on `(series, date)`, and
+re-requests a 45-day window behind the last point it holds because FRED revises.
+Drops FRED's `"."` placeholder rather than coercing it — a coerced `"."` becomes a
+fake zero-yield day in the middle of the curve. Every run is recorded in
+`collector_runs` with its record count and any error.
+
+**Dashboard** — risk limits, the 2s10s snapshot and a year of curve history, every
+series with its weekly change, and collector health. Values that haven't loaded
+render a skeleton, never `$0`.
+
+**Deployment** — `Dockerfile`, `cloudbuild.backend.yaml` (build → push → migrate →
+deploy, with a failed migration halting the pipeline), `firebase.json` pointing
+`tradeit-prod` at the `tradeit-api` Cloud Run service, and a `tradeit-collect`
+Cloud Run Job for the scheduler.
+
+**Verification** — 12 tests pass, every workspace typechecks, the full build is
+green, the API was booted and auth exercised end to end, and the dashboard was
+screenshotted in light and dark mode. That last step caught two real bugs: a CSS
+selector that silently never matched, so the inverted-curve warning colour was
+dead, and a missing favicon throwing a console error.
+
+### Before Phase 1 can start
+
+Three of these are Pete's, one is mine:
+
+1. **FRED API key** — free, two minutes, at `fredaccount.stlouisfed.org/apikeys`.
+   Until it's set the collector has nothing to pull.
+2. **Schwab developer app** — register at `developer.schwab.com`, create an app,
+   wait for "Ready for use". Read scopes only.
+3. **Schwab account paperwork** — apply for limited margin on the IRA, and sign
+   the leveraged/inverse ETF acknowledgment.
+4. **GCP provisioning** — Cloud SQL instance, Artifact Registry repo, the two
+   Cloud Run Jobs, and secrets. Mine to run once Pete confirms.

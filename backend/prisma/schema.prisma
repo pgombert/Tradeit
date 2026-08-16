@@ -1,0 +1,199 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Auth — a single user. ALLOWED_EMAIL gates both registration and sign-in.
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("users")
+}
+
+// ---------------------------------------------------------------------------
+// Market data
+// ---------------------------------------------------------------------------
+
+enum AssetClass {
+  EQUITY
+  ETF
+  LEVERAGED_ETF
+  INVERSE_ETF
+}
+
+model Security {
+  id     String     @id @default(uuid())
+  symbol String     @unique
+  name   String
+  class  AssetClass @map("asset_class")
+
+  /// 1 for unleveraged; 2 or 3 for leveraged products.
+  leverageFactor Int     @default(1) @map("leverage_factor")
+  isInverse      Boolean @default(false) @map("is_inverse")
+
+  /// Trailing average daily dollar volume. The engine's liquidity floor reads
+  /// this — see docs/PLAN.md §1.
+  avgDollarVolume Decimal? @map("avg_dollar_volume") @db.Decimal(20, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  priceBars PriceBar[]
+
+  @@map("securities")
+}
+
+model PriceBar {
+  id         String   @id @default(uuid())
+  securityId String   @map("security_id")
+  security   Security @relation(fields: [securityId], references: [id], onDelete: Cascade)
+
+  date   DateTime @db.Date
+  open   Decimal  @db.Decimal(18, 6)
+  high   Decimal  @db.Decimal(18, 6)
+  low    Decimal  @db.Decimal(18, 6)
+  close  Decimal  @db.Decimal(18, 6)
+  volume BigInt
+
+  source String @default("SCHWAB")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([securityId, date])
+  @@index([date])
+  @@map("price_bars")
+}
+
+// ---------------------------------------------------------------------------
+// Economic data (FRED)
+// ---------------------------------------------------------------------------
+
+enum EconRole {
+  RATES
+  CREDIT
+  VOLATILITY
+  GROWTH
+  INFLATION
+  CONDITIONS
+}
+
+model EconSeries {
+  /// The FRED series id, e.g. "DGS10". Natural key — collectors upsert on it.
+  seriesId String   @id @map("series_id")
+  title    String
+  role     EconRole
+  units    String
+  source   String   @default("FRED")
+
+  /// Date of the most recent point we hold. Staleness checks read this.
+  lastObservedAt DateTime? @map("last_observed_at") @db.Date
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  points EconPoint[]
+
+  @@map("econ_series")
+}
+
+model EconPoint {
+  id       String     @id @default(uuid())
+  seriesId String     @map("series_id")
+  series   EconSeries @relation(fields: [seriesId], references: [seriesId], onDelete: Cascade)
+
+  date  DateTime @db.Date
+  value Decimal  @db.Decimal(18, 6)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([seriesId, date])
+  @@index([seriesId, date(sort: Desc)])
+  @@map("econ_points")
+}
+
+// ---------------------------------------------------------------------------
+// The signal bus — one provenance record per thing we observed
+// ---------------------------------------------------------------------------
+
+enum ObservationSource {
+  FRED
+  SCHWAB
+  SEC_EDGAR
+  FINNHUB
+  CBOE
+  FINRA
+  AAII
+  NAAIM
+  NEWSLETTER
+  DERIVED
+}
+
+enum ObservationKind {
+  ECON_RELEASE
+  PRICE_BAR
+  FILING
+  EARNINGS_EVENT
+  SENTIMENT_READING
+  SHORT_INTEREST
+  LETTER_ITEM
+}
+
+model Observation {
+  id     String            @id @default(uuid())
+  source ObservationSource
+
+  /// The source's own stable id. Collectors upsert on (source, sourceRef), so a
+  /// crashed run re-runs to the same end state.
+  sourceRef String @map("source_ref")
+
+  /// A ticker, a sector, or MARKET for anything index-wide.
+  scope String
+  kind  ObservationKind
+
+  observedAt DateTime @map("observed_at")
+  ingestedAt DateTime @default(now()) @map("ingested_at")
+
+  payload Json
+  url     String?
+
+  @@unique([source, sourceRef])
+  @@index([scope, observedAt(sort: Desc)])
+  @@index([kind, observedAt(sort: Desc)])
+  @@map("observations")
+}
+
+// ---------------------------------------------------------------------------
+// Collector bookkeeping
+// ---------------------------------------------------------------------------
+
+enum CollectorStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+model CollectorRun {
+  id        String          @id @default(uuid())
+  collector String
+  status    CollectorStatus @default(RUNNING)
+
+  startedAt  DateTime  @default(now()) @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+
+  recordsWritten Int     @default(0) @map("records_written")
+  error          String?
+
+  @@index([collector, startedAt(sort: Desc)])
+  @@map("collector_runs")
+}

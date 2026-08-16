@@ -1,0 +1,26 @@
+{
+  "name": "tradeit",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "packages/shared",
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "build": "npm run build -w packages/shared && npm run build -w backend && npm run build -w frontend",
+    "build:shared": "npm run build -w packages/shared",
+    "lint": "npm run lint -w packages/shared && npm run lint -w backend && npm run lint -w frontend",
+    "test": "npm run test -w packages/shared && npm run test -w backend",
+    "db:migrate": "npm run db:migrate -w backend",
+    "db:generate": "npm run db:generate -w backend",
+    "db:seed": "npm run db:seed -w backend",
+    "db:reset": "npm run db:reset -w backend",
+    "collect": "npm run collect -w backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3"
+  }
+}

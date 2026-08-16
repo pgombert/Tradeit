@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+*.local
+.DS_Store
+*.log
+npm-debug.log*
+coverage/
+.vite/
+backend/prisma/*.db
+.firebase/

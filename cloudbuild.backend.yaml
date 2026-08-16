@@ -1,0 +1,76 @@
+# Backend pipeline: build → push → migrate → deploy.
+#
+#   gcloud builds submit --config=cloudbuild.backend.yaml .
+#
+# The migrate job runs before the service rolls out, and a failed migration
+# halts the pipeline so the API never starts against a bad schema.
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - backend/Dockerfile
+      - -t
+      - us-central1-docker.pkg.dev/$PROJECT_ID/tradeit/backend:$BUILD_ID
+      - -t
+      - us-central1-docker.pkg.dev/$PROJECT_ID/tradeit/backend:latest
+      - .
+
+  - id: push-sha
+    name: gcr.io/cloud-builders/docker
+    args: [push, us-central1-docker.pkg.dev/$PROJECT_ID/tradeit/backend:$BUILD_ID]
+
+  - id: push-latest
+    name: gcr.io/cloud-builders/docker
+    args: [push, us-central1-docker.pkg.dev/$PROJECT_ID/tradeit/backend:latest]
+
+  # Point the migrate job at the new image, then run it. Failure stops the build.
+  - id: migrate-update
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - update
+      - tradeit-migrate
+      - --image=us-central1-docker.pkg.dev/$PROJECT_ID/tradeit/backend:$BUILD_ID
+      - --region=us-central1
+
+  - id: migrate-execute
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - execute
+      - tradeit-migrate
+      - --region=us-central1
+      - --wait
+
+  # The collector job shares the image; Cloud Scheduler triggers it on a cadence.
+  - id: collect-update
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - update
+      - tradeit-collect
+      - --image=us-central1-docker.pkg.dev/$PROJECT_ID/tradeit/backend:$BUILD_ID
+      - --region=us-central1
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - tradeit-api
+      - --image=us-central1-docker.pkg.dev/$PROJECT_ID/tradeit/backend:$BUILD_ID
+      - --region=us-central1
+
+options:
+  machineType: E2_MEDIUM
+  logging: CLOUD_LOGGING_ONLY
