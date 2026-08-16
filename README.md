@@ -29,15 +29,17 @@ Schwab credentials in particular go there and nowhere else.
 ## Getting started
 
 ```bash
-docker compose up -d      # Postgres on 5434, Redis on 6381
-npm install
-cp .env.example backend/.env    # then fill in FRED_API_KEY and the JWT secrets
-npm run db:migrate
-npm run db:seed           # creates the single account, prints a password once
-npm run dev               # backend :4002, frontend :3002
+git clone https://github.com/pgombert/Tradeit.git
+cd Tradeit
+./infra/bootstrap-local.sh
+npm run dev               # backend :4002, dashboard http://localhost:3002
 ```
 
-Then pull data:
+The bootstrap script starts Postgres and Redis, generates secrets, prompts for
+your FRED key without echoing it, sets up the database, and pulls real data. It
+needs Docker running. See [`docs/SETUP.md`](docs/SETUP.md) to do it by hand.
+
+Pulling data afterwards:
 
 ```bash
 npm run collect           # every collector

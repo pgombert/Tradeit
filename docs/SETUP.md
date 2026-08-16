@@ -28,8 +28,25 @@ endpoint (see `CLAUDE.md`). That limits the blast radius; it doesn't remove it.
 
 ## Local development
 
-Local secrets live in `backend/.env`, which `.gitignore` already covers. Nothing
-there needs to be a real production value.
+One command, from a fresh clone:
+
+```bash
+./infra/bootstrap-local.sh
+```
+
+It checks your tools, starts Postgres and Redis in Docker, generates the JWT
+secrets, prompts for your FRED key **with the terminal echo off**, installs
+dependencies, applies the schema, creates your account and prints its password
+once, runs the tests, and pulls real data if a key was supplied. Safe to re-run —
+it won't overwrite an existing `backend/.env`.
+
+Then:
+
+```bash
+npm run dev     # backend :4002, dashboard http://localhost:3002
+```
+
+### Doing it by hand
 
 ```bash
 docker compose up -d                 # Postgres 5434, Redis 6381
@@ -39,20 +56,20 @@ cp .env.example backend/.env
 
 Then edit `backend/.env`:
 
-- `JWT_SECRET` and `JWT_REFRESH_SECRET` — any long random strings. Generate with
-  `openssl rand -base64 48`. These do not need to match production; they should
-  not.
-- `FRED_API_KEY` — your real key. It's low-sensitivity and read-only, and the
+- `JWT_SECRET` and `JWT_REFRESH_SECRET` — any long random strings, from
+  `openssl rand -base64 48`. These should *not* match production.
+- `FRED_API_KEY` — your real key. Low-sensitivity and read-only, and the
   collector can't do anything without it.
-- Schwab credentials — leave blank locally unless you're actively working on that
+- Schwab credentials — leave blank locally unless you're working on that
   collector. The dashboard renders an honest "not connected" state without them.
 
 ```bash
 npm run db:migrate
 npm run db:seed          # creates your account, prints a password once
-npm run dev              # backend :4002, frontend :3002
 npm run collect -- fred  # pull real data
 ```
+
+Lost the password? `npm run db:seed -- --force` sets a new one.
 
 ---
 
