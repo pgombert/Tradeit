@@ -10,8 +10,13 @@ and places every order himself. Every number traces back to a source row with a
 timestamp and a URL.
 
 - Plan: [`docs/PLAN.md`](docs/PLAN.md) — read this first
+- Setup and secrets: [`docs/SETUP.md`](docs/SETUP.md)
 - Working agreement: [`CLAUDE.md`](CLAUDE.md)
 - Deployment: `trade.meadowlark.*`, GCP project `meadowlark-492419`
+
+**Credentials never go in chat, a commit, or any file but `.env`.** Production
+secrets live in Google Secret Manager — see [`docs/SETUP.md`](docs/SETUP.md).
+Schwab credentials in particular go there and nowhere else.
 
 | | |
 |---|---|
