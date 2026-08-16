@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { INSTRUMENTS } from '@tradeit/shared';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/error-handler.js';
 import * as authService from '../services/auth.service.js';
 import * as econService from '../services/econ.service.js';
+import * as regimeService from '../services/regime.service.js';
 import * as schwabService from '../services/schwab.service.js';
 import { getRiskStatus } from '../services/risk.service.js';
 import { prisma } from '../lib/prisma.js';
@@ -56,6 +58,14 @@ router.get('/econ/series/:seriesId', asyncHandler(async (req, res) => {
 router.get('/econ/yield-curve', asyncHandler(async (_req, res) => {
   res.json(await econService.getYieldCurve());
 }));
+
+router.get('/regime', asyncHandler(async (_req, res) => {
+  res.json(await regimeService.getRegime());
+}));
+
+router.get('/instruments', (_req, res) => {
+  res.json(INSTRUMENTS);
+});
 
 router.get('/account', asyncHandler(async (_req, res) => {
   res.json(await schwabService.getAccountSnapshot());

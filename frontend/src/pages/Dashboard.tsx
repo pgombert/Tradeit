@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { AccountSnapshot, EconSeriesSummary, YieldCurveSnapshot } from '@tradeit/shared';
-import { dataApi, type CollectorRunDto, type RiskStatus } from '../api/client';
+import { dataApi, type CollectorRunDto, type RegimeResponse, type RiskStatus } from '../api/client';
+import { RegimePanel } from '../components/RegimePanel';
 import { YieldCurveChart, type Series } from '../components/YieldCurveChart';
 import { useAuth } from '../context/AuthContext';
 
@@ -25,17 +26,19 @@ export function Dashboard() {
   const [account, setAccount] = useState<AccountSnapshot>();
   const [runs, setRuns] = useState<CollectorRunDto[]>();
   const [chart, setChart] = useState<Series[]>();
+  const [regime, setRegime] = useState<RegimeResponse>();
 
   useEffect(() => {
     let cancelled = false;
 
     async function load(): Promise<void> {
-      const [c, s, r, a, cr] = await Promise.all([
+      const [c, s, r, a, cr, rg] = await Promise.all([
         dataApi.yieldCurve(),
         dataApi.series(),
         dataApi.risk(),
         dataApi.account(),
         dataApi.collectorRuns(),
+        dataApi.regime(),
       ]);
 
       if (cancelled) return;
@@ -44,6 +47,7 @@ export function Dashboard() {
       setRisk(r);
       setAccount(a);
       setRuns(cr);
+      setRegime(rg);
 
       const [two, ten] = await Promise.all([
         dataApi.seriesDetail('DGS2', 365).catch(() => null),
@@ -91,6 +95,10 @@ export function Dashboard() {
           </button>
         </div>
       </header>
+
+      {/* ---- Stage 0: the call that gates everything downstream ---- */}
+      <p className="section-label">Market regime</p>
+      <RegimePanel regime={regime} />
 
       {/* ---- Risk limits: known from config, so they render immediately ---- */}
       <p className="section-label">Risk limits</p>

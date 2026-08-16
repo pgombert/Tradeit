@@ -109,7 +109,27 @@ export const authApi = {
     api.post<LoginResponse>('/auth/login', { email, password }).then((r) => r.data),
 };
 
+export interface RegimeSignal {
+  key: string;
+  label: string;
+  reading: string;
+  score: number;
+}
+
+export interface RegimeResponse {
+  regime: 'RISK_ON_TREND' | 'CHOP' | 'RISK_OFF' | 'CRISIS';
+  score: number;
+  signals: RegimeSignal[];
+  missing: string[];
+  cappedByMissingTrend: boolean;
+  leverageAllowed: boolean;
+  riskBudget: number;
+  rationale: string;
+  asOf: string | null;
+}
+
 export const dataApi = {
+  regime: () => api.get<RegimeResponse>('/regime').then((r) => r.data),
   yieldCurve: () => api.get<YieldCurveSnapshot>('/econ/yield-curve').then((r) => r.data),
   series: () => api.get<EconSeriesSummary[]>('/econ/series').then((r) => r.data),
   seriesDetail: (id: string, days = 365) =>

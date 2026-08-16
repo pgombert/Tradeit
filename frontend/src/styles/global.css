@@ -364,6 +364,87 @@ th.num {
 .status-ok { color: var(--pos); }
 .status-bad { color: var(--neg); }
 
+/* Values in tables and tiles take the semantic tone directly. A zero reading is
+   neutral — it must not borrow the positive tone. */
+.pos { color: var(--pos); }
+.neg { color: var(--neg); }
+.neutral { color: var(--muted); }
+
+/* ---- State chips: shape plus colour, never colour alone ---- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.chip::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+.tone-good { color: var(--pos); }
+.tone-neutral { color: var(--muted); }
+.tone-warn { color: var(--brass); }
+.tone-critical { color: var(--neg); }
+
+/* A square marker distinguishes critical from warn without relying on hue. */
+.tone-critical::before { border-radius: 1px; }
+
+.notice {
+  margin-top: 18px;
+  padding: 12px 15px;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--brass);
+  border-radius: 4px;
+  background: var(--surface-alt);
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  max-width: 72ch;
+}
+
+/* ---- Score bar: centred at zero so sign reads before magnitude ---- */
+
+.scorebar-track {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--rule-soft);
+}
+
+.scorebar-track::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background: var(--rule);
+}
+
+.scorebar-fill {
+  position: absolute;
+  top: 0;
+  height: 6px;
+  border-radius: 3px;
+  min-width: 2px;
+}
+
+.scorebar-fill.pos { background: var(--pos); }
+.scorebar-fill.neg { background: var(--neg); }
+
 /* ---- Login ---- */
 
 .login-wrap {
