@@ -11,7 +11,8 @@ row with a timestamp and a URL.
 
 - Plan: [`docs/PLAN.md`](docs/PLAN.md)
 - Owner/operator: Pete Gombert (sole user)
-- Deployment: subdomain of Meadowlark, GCP project `meadowlark-492419`
+- Deployment: `trade.meadowlark.*`, GCP project `meadowlark-492419`
+- Instruments: stocks and ETFs only, in a Schwab retirement account
 
 ## Status
 

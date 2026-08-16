@@ -2,333 +2,340 @@
 
 **Owner:** Pete Gombert (sole user, sole decision-maker)
 **Repo:** `pgombert/Tradeit`
-**Deploys to:** a subdomain of Meadowlark (GCP project `meadowlark-492419`)
-**Status:** Plan drafted 2026-08-16. Phase 0 ready to start.
+**Deploys to:** `trade.meadowlark.*` (GCP project `meadowlark-492419`)
+**Status:** Rev 2, 2026-08-16. Decisions locked. Phase 0 ready to start.
+
+---
+
+## Locked decisions
+
+| | |
+|---|---|
+| **Instruments** | Stocks and ETFs only. No options. |
+| **Account** | Schwab retirement account |
+| **Broker** | Charles Schwab — Trader API, free with the account |
+| **Capital** | $100,000 |
+| **Ruin budget** | The full $100,000 |
+| **Newsletters** | None yet — starting set proposed in §3 |
+| **Domain** | `trade.meadowlark.*` (confirm TLD at Phase 0) |
+
+Three of these have consequences that reshape the system. They're worked through in
+§1 (what we can actually trade), §2 (what the account permits), and §3 (sources).
 
 ---
 
 ## 0. What this is, and what it is not
 
-**What it is.** A weekly research pipeline. It pulls from a wide set of independent
-financial sources — market data, economic releases, SEC filings, newsletters you
-subscribe to, sentiment and positioning gauges — normalizes all of it into one
-timestamped store, builds a compact evidence packet for each candidate trade, and
-asks Claude to form an opinion on that packet. A second Claude pass then tries to
-destroy that opinion. What survives goes into a Sunday-evening brief with a
-recommended size, entry zone, stop, and a hard exit date.
+**It is a research pipeline.** Market data, economic releases, SEC filings,
+research letters, sentiment and positioning gauges — all normalized into one
+timestamped store. From that store it builds a compact dossier per candidate, asks
+Claude for a verdict, then runs a second pass whose only job is to kill that
+verdict. What survives lands in a Sunday brief.
 
-**What it is not.** It is not an execution system. It places no orders, holds no
-brokerage credentials with trading permission, and has no auto-trade path. Claude
-is a research analyst on this project, not an adviser and not a fiduciary. Pete
-reads the brief, decides, and enters every order personally. The system's job is to
-make sure the decision is made against organized evidence instead of a feed.
-
-**A note on the target, stated once.** Turning $100,000 into $1,000,000 in a year on
-weekly holds requires compounding **4.5% net every single week for 52 weeks**
-(10^(1/52) − 1 = 4.53%). Long-only stock and ETF positions held for a week don't
-move enough to get there — reaching 4.5%/week reliably requires leverage, in
-practice defined-risk options, where a good week is +40% and a bad week is −100% of
-premium. The return distribution that occasionally produces a 10x also produces a
-total loss far more often than it produces the 10x. That is a statement about
-arithmetic, not about skill.
-
-So the plan below does two things at once: it builds exactly the system described,
-and it instruments the system so the tradeoff is visible in numbers rather than
-felt in hindsight. The dashboard's headline metric is **expectancy per unit of risk**,
-with the 10x pace shown alongside it as a stretch line. Section 6 proposes splitting
-the $100k into a core sleeve and an aggressive sleeve so that a bad month reduces
-the position size instead of ending the program. Pete can override any of that — it's
-his money and his call — but the plan defaults to keeping the program alive long
-enough to learn something.
+**It is not an execution system.** Schwab's API can place orders; we will not wire
+that path. Claude is a research analyst here, not an adviser and not a fiduciary.
+Pete reads the brief, decides, and enters every order himself.
 
 ---
 
-## 1. Architecture
+## 1. What "stocks and ETFs only" means for the target
 
-Deliberately the same shape as Tally, Meadowlark, and Nourish, so there's nothing
-new to learn and the deploy story is copy-paste.
+You've accepted the risk and set the ruin budget at the full $100k, so this section
+is about mechanics, not caution. But ruling out options changes *where the return
+has to come from*, and that has direct design consequences.
 
-### Monorepo (npm workspaces)
+### The only leverage available is leveraged ETFs
+
+No options and no margin (see §2) means the sole source of leverage is 2x/3x
+exchange-traded products — which are, unambiguously, ETFs and therefore in scope:
+
+- **Index:** TQQQ / SQQQ (3x Nasdaq), UPRO / SPXU (3x S&P), TNA / TZA (3x Russell)
+- **Sector:** SOXL / SOXS (3x semis), LABU / LABD (3x biotech), FAS / FAZ (3x
+  financials), ERX / ERY (3x energy)
+- **Unleveraged inverse**, for bearish tilt without 3x: SH, PSQ, RWM
+- **Single-stock 2x** (NVDL, TSLL and similar) — allowed, but see the liquidity
+  note below
+
+### The arithmetic, worked through
+
+At 3x on a broad index, a *perfect* forecaster earns about 4.5% a week — SPY's
+typical absolute weekly move is roughly 1.5%. The target is 4.53% a week. So on
+index products, **a 100% hit rate lands you at the target before costs and below it
+after.** Hit rate alone cannot get there. That isn't a discouraging framing; it's a
+design constraint, and it points at exactly two levers:
+
+1. **Payoff asymmetry.** Cutting losers at −2% while letting winners run to +8%
+   produces the required expectancy at a hit rate in the low 60s. Which means the
+   stop discipline in Stage 5 is not risk management bolted on the side — **it is
+   the primary return driver.** Build it first, tune it hardest.
+2. **Instrument volatility.** Semis move about twice what the S&P does. SOXL's
+   typical weekly swing is 9%+, not 4.5%. The aggressive sleeve should therefore
+   concentrate in high-beta *sector* 3x products rather than TQQQ and UPRO.
+
+A realistic outcome for a good version of this system is somewhere in the +40% to
++100% annual range. The 10x is a tail of that distribution rather than its center.
+The dashboard shows both: expectancy per unit of risk as the headline, the 10x pace
+drawn alongside it.
+
+### Leveraged ETF mechanics the risk engine must model
+
+- **Daily reset means path dependency.** Over five trading days in a trending tape
+  the drag is small; in a chopping tape it compounds against you regardless of
+  direction. **Design rule: the regime classifier gates the leveraged sleeve
+  entirely — no 3x positions in "Chop."** This falls straight out of the constraint
+  and is one of the most valuable rules in the system.
+- **Embedded financing.** A 3x fund finances 2x the notional at roughly SOFR plus a
+  spread, on top of a ~0.9% expense ratio — call it 8–11% a year of drag at current
+  rates. It goes in the expectancy model explicitly, not as a rounding error.
+- **Liquidity floor.** Only leveraged products above ~$5M average daily dollar
+  volume. Most single-stock leveraged ETFs fail this and carry punishing spreads.
+- **Schwab paperwork.** Schwab requires an acknowledgment before trading leveraged
+  and inverse products. Worth signing during Phase 0 so it isn't discovered in
+  week 5.
+
+---
+
+## 2. What the retirement account permits
+
+Good news first: **every gain compounds tax-free.** The entire short-term capital
+gains drag from the first draft is gone, and wash-sale tracking becomes irrelevant
+inside the account. At weekly turnover that is worth more than any single data
+source in §3.
+
+Four constraints follow from the account type, and each has a build consequence:
+
+| Constraint | Consequence |
+|---|---|
+| **No short selling** in an IRA | Every bearish thesis is expressed as a *long* position in an inverse ETF (SQQQ, SPXU, SH). The engine emits direction, then translates to an instrument — the trade list never contains a short. |
+| **No margin borrowing** | Position sizing works against settled capital only. No leverage beyond what's inside the ETF wrapper. |
+| **Cash account, T+1 settlement** | Sell Monday, proceeds settle Tuesday. With weekly holds this mostly works, but a mid-week rotation can trip a good-faith violation. **Apply for Schwab's "limited margin" on the IRA in Phase 0** — it permits trading unsettled proceeds without borrowing, and removes the whole class of problem. The ledger tracks settled vs. unsettled cash either way. |
+| **Contributions are capped** | An IRA balance lost is tax-advantaged space that can only be refilled at roughly $7–8k a year. Noting it once as a fact, not as an argument — you've made the call. |
+
+### Schwab Trader API — a meaningful simplification
+
+Schwab includes API access free with the account, in two halves: **Accounts &
+Trading** (positions, balances, orders) and **Market Data** (quotes, price history,
+movers). That covers both the price feed *and* automatic fill import, which
+collapses two line items from the first draft:
+
+- **Alpaca is no longer needed** for market data — Schwab's feed is the same data
+  the account trades against, which is better for reconciliation.
+- **Stage 7 fill entry becomes automatic** rather than manual or CSV-imported.
+
+Setup: register as an Individual Developer at `developer.schwab.com`, create an app,
+wait for "Ready for use" status. Individual access against your own account is the
+supported path; nothing about this requires commercial approval. OAuth 2.0, and the
+refresh token needs re-authorization periodically — the collector must handle that
+expiry gracefully rather than silently going stale.
+
+**We request read scopes only.** The trading endpoints exist; we don't call them.
+
+---
+
+## 3. Sources — the starting set
+
+You have no newsletters today, so this is a proposal to test rather than a list to
+trust. Each one enters as a candidate, and §5's attribution engine decides by
+week 10 which ones earned their place.
+
+### First, a word on the paid alert-service market
+
+Search for "best swing trading newsletters" and you get Motley Fool Stock Advisor,
+Stock Market Guides, Mindful Trader and similar, with headline track records like
+"+421% since 2022" or "beat the S&P by 4.9x." Two things about those numbers: they
+are self-reported and not independently audited, and the ranking sites publishing
+them are affiliate-compensated for the signups. That doesn't prove they're
+worthless — it means their claimed edge is unverifiable from outside, which is
+precisely the thing this system was built to fix. If you want them in, add them as
+Tier 3 candidates and let the attribution data decide at your own expense. I
+wouldn't start there.
+
+The sources below were picked for a different property: they publish *reasoning and
+data* rather than picks, which is what a dossier can actually use.
+
+### Macro and regime — feeds Stage 0
+
+| Source | Why | Cost |
+|---|---|---|
+| **Apollo — Daily Spark** (Torsten Slok) | Daily, chart-driven, genuinely good macro. No product to sell you. | Free |
+| **Verdad Weekly Research** (Dan Rasmussen) | Quantitative, rigorous, publishes its methodology and its misses. Among the best free research anywhere. | Free |
+| **Liz Ann Sonders & Kathy Jones** (Schwab) | Equities and rates respectively. Already yours as a Schwab client. | Free |
+| **Calculated Risk** (Bill McBride) | Housing and employment, long track record of calling turns early. | Free / ~$60yr |
+| **Topdown Charts** (Callum Thomas) | Breadth, valuation and sentiment charts, weekly cadence. | Free tier |
+
+### Market internals and positioning — feeds Stage 0 and Stage 1
+
+| Source | Why | Cost |
+|---|---|---|
+| **SentimenTrader** | Quantified sentiment and breadth studies published as *historical base rates* — "when this setup occurred, here's the distribution of forward returns." That's already dossier-shaped. The single best fit for this system. | ~$100/mo |
+| **Bespoke Investment Group** | Data-driven, honest about misses, strong seasonality and breadth work. | ~$100/mo |
+| **Quantifiable Edges** (Rob Hanna) | Statistical short-term edges at exactly this holding period. | ~$60/mo |
+| **SpotGamma** or **Menthor Q** | Dealer options positioning. Relevant even though we trade no options — dealer gamma drives index behavior week to week, which is what the leveraged sleeve rides. | $100–250/mo |
+
+### Catalysts and earnings — feeds Stage 1
+
+| Source | Why | Cost |
+|---|---|---|
+| **The Transcript** | Weekly digest of what management actually said on earnings calls. Genuinely differentiated primary-source aggregation. | Free / cheap |
+| **Earnings Whispers** | Calendar and whisper numbers. | Free tier |
+
+### Factor research — shapes the screens, not the weekly picks
+
+**Alpha Architect** blog, and **AQR** / **Research Affiliates** publications. All
+free, all peer-reviewed-adjacent. These inform how Stage 1 screens are built rather
+than feeding any individual week.
+
+### Machine-readable crowd sentiment
+
+Not newsletters, but the same job and free: **StockTwits** sentiment API, and
+Reddit mention-volume spikes on r/stocks and r/wallstreetbets. Most useful as a
+*crowding* indicator — a contrarian input, not a confirming one.
+
+### Recommended starting configuration
+
+Everything free above, plus **one paid subscription: SentimenTrader** (~$100/mo).
+Its output is already structured as base-rate studies, which is exactly what Stage 2
+wants to put in front of Claude. Revisit at week 6 with attribution data in hand;
+add Bespoke and Quantifiable Edges then if the sentiment inputs are pulling weight.
+
+Ingestion is unchanged from the first draft: a dedicated Gmail account, everything
+subscribed to it, pulled through the Gmail API using Meadowlark's existing Google
+OAuth plumbing. Personal use only; nothing redistributed.
+
+---
+
+## 4. Architecture
+
+Deliberately the same shape as Tally, Meadowlark, and Nourish.
 
 | Workspace | Stack | Dev port | Purpose |
 |---|---|---|---|
 | `packages/shared` | TypeScript | — | Shared types (`@tradeit/shared`) |
 | `backend` | Express 5 + Prisma + PostgreSQL 16 + Redis | 4002 | API, collectors, engine |
-| `frontend` | React 19 + Vite 7 | 3002 | The dashboard and weekly brief |
+| `frontend` | React 19 + Vite 7 | 3002 | Dashboard and weekly brief |
 
-Ports chosen to avoid colliding with Tally (3000/4000) and Meadowlark (3001/4001)
-when several projects run locally at once. Local Postgres on **5434**, Redis on
-**6381**, same reasoning.
+Ports avoid Tally (3000/4000) and Meadowlark (3001/4001). Postgres 5434, Redis 6381.
 
-### Production
+**Production.** Cloud Run service `tradeit-api` in `us-central1`; frontend on
+Firebase Hosting with `/api/**` rewritten to Cloud Run, per Meadowlark's
+`firebase.json`; Cloud SQL Postgres, smallest tier; Google Secret Manager for
+secrets; Cloud Scheduler driving Cloud Run *Jobs* for collectors, so a collector
+crash can't take the app down; Sentry for errors.
 
-- **Backend** → Cloud Run service `tradeit-api`, region `us-central1`
-- **Frontend** → static build served behind the same Firebase Hosting pattern
-  Meadowlark uses, with `/api/**` rewritten to the Cloud Run service
-- **Database** → Cloud SQL Postgres (smallest tier; this is one user and modest data)
-- **Secrets** → Google Secret Manager, exactly as Tally does
-- **Scheduling** → Cloud Scheduler → Cloud Run **Jobs** (not cron inside the API
-  container, so a collector crash can't take down the app)
-- **Errors** → Sentry, same setup as Tally
+**Auth.** Meadowlark's JWT and Google sign-in, then a hard email allowlist of one.
+No signup, no password reset, no invites.
 
-### Auth
-
-Reuse the Meadowlark JWT + Google OAuth code, then hard-allowlist a single email
-address in the auth middleware. One user, one account. No signup route, no
-password reset, no invites. This is the one place we deliberately build *less* than
-the other projects.
-
-### Engineering standards
-
-The Tally `CLAUDE.md` standards apply here verbatim and matter more, not less:
-
-- **Money is `Decimal` end to end.** Never `number`, never `parseFloat`, never
-  `.toFixed()` mid-calculation.
-- **Multi-table writes go through `prisma.$transaction()`.**
-- **AI output is validated against canonical data before it is persisted or shown.**
-  If Claude names a ticker, the ticker must resolve to a row we already hold, or
-  the recommendation is rejected. If Claude cites a price, we substitute our own.
-  This is the single most important rule in this repo.
-- **Every importer is idempotent** and keyed on the source's stable ID, so a
-  crashed collector re-runs cleanly.
-- **Never render `$0` while a value is loading.** In a P&L view a flashed zero is
-  worse here than it is in Tally.
-
-A `CLAUDE.md` carrying these forward gets committed in Phase 0.
+**Standards carried from Tally.** Money is `Decimal` end to end. Multi-table writes
+run inside `prisma.$transaction()`. Collectors are idempotent on the source's stable
+ID. Never render `$0` while loading. And the one that matters most here:
+**anything Claude produces is validated against canonical data before it is stored
+or displayed** — tickers must resolve to rows we hold, quoted prices are replaced
+with ours, and a verdict citing evidence that doesn't exist is discarded whole.
 
 ---
 
-## 2. The data layer
+## 5. The engine
 
-### The core idea: one signal bus
+One `Observation` table takes every collector's output — source, stable external ID,
+scope, observed-at, ingested-at, payload, URL — with structured domains
+(`PriceBar`, `EconSeries`, `Filing`, `NewsletterItem`, `Catalyst`) alongside. The
+rule this buys: Claude never sees a raw feed, only a curated packet where every line
+carries a citable ID.
 
-Every collector writes into a single `Observation` table — `source`, `sourceRef`
-(the stable external ID), `scope` (ticker, sector, or `MARKET`), `observedAt`,
-`ingestedAt`, `kind`, `payload` (JSONB), `url`. Structured domains that need real
-querying get their own tables alongside it (`PriceBar`, `EconSeries`, `Filing`,
-`NewsletterItem`, `Catalyst`).
+Data sources by tier: **free** — Schwab market data, FRED (`DGS2`, `DGS10`,
+`T10Y2Y`, `ICSA`, `BAMLH0A0HYM2`, NFCI), SEC EDGAR, Treasury/BLS/BEA, Finnhub
+earnings calendar, CBOE VIX term structure and put/call, AAII and NAAIM, FINRA short
+interest. **Paid, later** — Tiingo Power (~$50/mo) if Schwab's history proves
+insufficient for backtesting. Polygon is no longer needed; it was for options.
+**Derived in-house** — relative strength, moving averages, ATR, RSI, volume surges,
+sector rotation, breadth, realized vs. implied vol, correlation to the book.
 
-The rule this buys us: **Claude never sees raw HTML or a raw feed.** It sees a
-curated, deduplicated, timestamped packet assembled from these tables, where every
-line has an ID that can be cited and audited afterward. That's what makes
-attribution in Section 5 possible, and it's what keeps hallucinated evidence out.
+The Sunday job chain, unchanged in shape from Rev 1 but now instrument-aware:
 
-### Sources, in build order
+**Stage 0 — Regime classification** *(code)*. Trend, VIX level and term structure,
+credit spreads, 2s10s, breadth → **Risk-On Trend / Chop / Risk-Off / Crisis**. Sets
+the week's risk budget before any candidate is examined, and — new in this revision
+— **gates the leveraged sleeve entirely**, which is off in Chop.
 
-**Tier 1 — free, high signal, build first**
+**Stage 1 — Candidate generation** *(code)*. 20–40 names with provenance: momentum
+leaders, catalysts inside the window, insider clusters, research-letter consensus and
+divergence, oversold names in intact uptrends, and sector expressions of the regime
+call. Bearish candidates are emitted as *direction*, translated to inverse ETFs at
+Stage 5 — never as shorts.
 
-| Source | What we take | Cost |
+**Stage 2 — Evidence dossier** *(code)*. Per candidate: price and vol stats, every
+catalyst in the window, fundamentals, what each source said and when, insider
+activity, correlation to the book. Every line carries an observation ID.
+
+**Stage 3 — Analyst pass** *(Claude)*. Structured output: thesis, direction,
+conviction, entry zone, stop, target, horizon, catalyst, **what would prove it
+wrong**, and the evidence IDs relied on. Then the validation gate above.
+
+**Stage 4 — Red team pass** *(Claude)*. One instruction: kill the thesis. Bear case,
+what's priced in, crowding, what the analyst ignored. Survivors advance; the rest are
+logged with cause of death, which over time is as valuable as the trades.
+
+**Stage 5 — Portfolio construction** *(code, no AI)*. Fractional Kelly sizing under
+a hard per-position cap; correlation and sector caps so five names aren't one bet;
+weekly risk bounded by the Stage 0 regime; direction-to-instrument translation
+(bearish → inverse ETF, high-conviction + trending regime → sector 3x); settled-cash
+check against the T+1 ledger. **Every position gets a stop and a mandatory exit date
+at entry** — and per §1, the stop is the return driver, not a safety net. Circuit
+breakers: −10% week halves next week's size, −20% from peak pauses trading for a
+review, −30% is a full stop and rebuild.
+
+**Stage 6 — The Sunday brief** *(you)*. Regime call and why, risk budget, ranked
+trades with size/entry/stop/exit, what changed, **what we got wrong last week**, open
+positions. You approve each line. The click is a record, not a trigger.
+
+**Stage 7 — Logging and attribution** *(code)*. Fills pulled automatically from the
+Schwab API. Then the system measures itself: hit rate, average win vs. average loss,
+expectancy, drawdown, and critically **alpha per source** and **alpha per signal
+type**. Which letter actually predicted anything? Do insider clusters work in this
+regime? Is the regime classifier itself right? This is what makes the system improve
+rather than merely accumulate.
+
+---
+
+## 6. Build phases
+
+| Phase | Work | Ends with |
 |---|---|---|
-| **FRED** (St. Louis Fed) | Yield curve (`DGS2`, `DGS10`, `T10Y2Y`), real yields, CPI/PCE, weekly jobless claims (`ICSA`), NFCI financial conditions, HY credit spreads (`BAMLH0A0HYM2`), money supply | Free, 1,000 req/day |
-| **SEC EDGAR** | Form 4 insider transactions (clusters matter), 8-K, S-1/424B lockup expiries, XBRL company facts, full-text search | Free |
-| **Treasury FiscalData / BLS / BEA** | Auction schedule, CPI/employment release detail | Free |
-| **Alpaca** | Intraday and daily bars, free IEX feed — enough for research and paper trading | Free |
-| **Finnhub** free tier | Earnings calendar, basic news | Free, 60 calls/min |
-| **CBOE / public** | VIX level and term structure (VIX vs VIX3M), put/call ratio | Free |
-| **AAII / NAAIM** | Weekly retail sentiment, active-manager exposure | Free |
-| **FINRA** | Short interest (bi-monthly) | Free |
+| **0** | Monorepo, schema, Cloud Run + Cloud SQL + `trade.meadowlark.*`, single-user auth, Schwab API registration, FRED collector. **In parallel, by you:** apply for IRA limited margin, sign the leveraged-ETF acknowledgment, create the newsletter Gmail and subscribe to the §3 free list | Deployed shell showing a live yield curve and Schwab positions |
+| **1** | Gmail ingestion, EDGAR, catalyst calendar, sentiment collectors, the `Observation` bus | Every source flowing into one store |
+| **2** | Regime engine, screens, dossier builder | First automated Sunday brief — rules only, no AI |
+| **3** | Analyst pass, red team pass, validation gate | First full brief |
+| **4** | Risk engine, instrument translation, settled-cash ledger, circuit breakers, approval flow | **Paper trading begins** |
+| **5–8** | Paper trade live. Attribution dashboard. Backtest the screens against Schwab history. Cut sources that don't earn their place | Four-plus weeks of honest track record |
+| **9** | Go / no-go against real numbers | Real capital, if expectancy is positive |
 
-**Tier 2 — paid, add once Tier 1 is flowing**
-
-| Source | What it adds | Cost |
-|---|---|---|
-| **Tiingo Power** | Clean EOD history, fundamentals, and news in one tier — the research backbone | ~$50/mo |
-| **Polygon.io (Massive) Advanced** | Full SIP tape real-time + **options chains**. Only needed if we trade options — which Section 6 says we probably do | ~$199/mo |
-
-Recommendation: start on Alpaca free + Tiingo. Add Polygon at the point we commit
-to options, not before.
-
-**Tier 3 — newsletters**
-
-Set up a dedicated Gmail account, subscribe every newsletter to it, and ingest via
-the Gmail API — we already have the Google OAuth plumbing from Meadowlark. Each
-email is parsed into a `NewsletterItem`: source, published date, tickers mentioned,
-stance (bullish/bearish/neutral), stated conviction, stated horizon, and the raw
-text retained for citation.
-
-Two constraints, stated plainly. **Personal use only** — content from paid
-newsletters is ingested for Pete's own decision-making and never redistributed, and
-each publisher's terms should be checked before adding it. And **newsletters are
-the least trustworthy source in the system**: they have incentives, they're often
-late, and some are outright promotional. Section 5's attribution engine exists
-largely to find out, empirically, which ones actually add anything. Expect to cut
-most of them by week 10.
-
-**Tier 4 — derived in-house**
-
-Computed from data we already hold, not bought: relative strength vs SPY, 20/50/200
-day moving averages, ATR, RSI, volume surges, gap statistics, sector rotation
-(sector ETFs vs SPY), market breadth, realized vs implied volatility, and
-correlation of each candidate to the current book.
+The paper-trading gate costs about a tenth of the year and is what makes the
+attribution data in Stage 7 trustworthy — without it there's no way to tell a bad
+system from a bad month when the first drawdown lands.
 
 ---
 
-## 3. The weekly engine
+## 7. Running cost
 
-Run as a Cloud Run Job chain on Sunday. The design principle throughout: **use AI
-for judgment on structured evidence, and deterministic code for anything involving
-a number that touches money.**
-
-### Stage 0 — Regime classification (deterministic)
-
-Score the market from hard data only: trend (SPY vs its 50/200 DMA), volatility
-(VIX level and whether the term structure is in contango or backwardation), credit
-(HY spread direction), rates (2s10s, real yields), and breadth. Output one of four
-states — **Risk-On Trend / Chop / Risk-Off / Crisis**.
-
-The regime sets the week's total risk budget before a single candidate is looked
-at. This is the most important control in the system: it's what stops the machine
-from deploying full size into a falling market because the individual stories
-sounded good.
-
-### Stage 1 — Candidate generation (deterministic)
-
-Independent screens, each producing candidates with provenance attached. Roughly
-20–40 names per week across:
-
-- Momentum / relative-strength leaders
-- Names with a catalyst inside the holding window (earnings, FDA, investor day)
-- Insider cluster buying from Form 4
-- Newsletter consensus and newsletter divergence
-- Unusual options activity (once options data is live)
-- Oversold mean-reversion within intact uptrends
-- Macro-driven sector and ETF expressions of the regime call
-
-### Stage 2 — Evidence dossier (deterministic)
-
-For each candidate, assemble a compact structured packet: price and volatility
-stats, every catalyst inside the window, fundamentals, what each newsletter said
-and *when* they said it, insider activity, options positioning, and correlation to
-what's already held. Every line carries an observation ID.
-
-### Stage 3 — Analyst pass (Claude)
-
-Claude reads one dossier and returns strict JSON: thesis, direction, conviction
-(1–5), entry zone, stop level, target, horizon, the catalyst it's keyed to, **what
-would prove the thesis wrong**, and the specific evidence IDs relied on.
-
-Then the validation gate: every ticker must resolve to a security we hold data for,
-every cited price is replaced with ours, every cited date is checked against the
-calendar table, and any recommendation citing evidence IDs that don't exist is
-discarded outright. Nothing from the model reaches the brief unverified.
-
-### Stage 4 — Red team pass (Claude)
-
-A separate call with one job: kill the thesis. What's the bear case? What's already
-priced in? Is this a crowded trade? Is the newsletter that surfaced it promotional?
-What did the analyst pass ignore? A thesis that survives with conviction intact
-moves forward. One that doesn't is logged with its cause of death — that log is
-worth as much as the trades.
-
-### Stage 5 — Portfolio construction (deterministic — no AI)
-
-- Sizing on a **fractional Kelly** basis, capped hard (¼ Kelly, and never more than
-  a fixed % of capital in one position)
-- Correlation and sector caps, so five names aren't secretly one bet
-- Total risk deployed for the week is capped by the Stage 0 regime
-- **Every position gets a stop and a mandatory exit date at entry.** Positions last
-  a week; the exit is scheduled, not decided later under pressure
-- Circuit breakers: a −10% week halves next week's size; −20% from peak pauses
-  trading for a week and forces a review; −30% is a full stop and a rebuild
-
-### Stage 6 — The Sunday brief
-
-One page in the app: the regime call and why, the week's risk budget, the ranked
-trades with size/entry/stop/exit, what changed since last week, **what we got wrong
-last week**, and the open-position ledger. Pete approves or rejects each line
-individually. Nothing moves without that click, and the click is a record, not a
-trigger.
-
-### Stage 7 — Logging and attribution
-
-Fills get entered manually or imported from the broker (the same import pattern
-Tally uses). Then the system measures itself: hit rate, average win vs average
-loss, expectancy, drawdown — and critically, **alpha per source** and **alpha per
-signal type**. Which newsletter actually predicted anything? Do insider clusters
-work in this regime? Is the regime classifier itself accurate?
-
-This is the part that makes the system improve rather than merely accumulate. After
-about ten weeks there's enough data to start cutting sources that contribute noise.
-
----
-
-## 4. Build phases
-
-Each phase ends with something running, not a milestone document.
-
-| Phase | Work | Output |
-|---|---|---|
-| **0** — this week | Monorepo scaffold, Prisma schema, `CLAUDE.md`, Cloud Run + Cloud SQL + subdomain, single-user auth, FRED + Alpaca collectors | Deployed shell showing live yield curve and prices |
-| **1** | Gmail newsletter ingestion, SEC EDGAR, catalyst calendar, sentiment collectors, the `Observation` bus with provenance | All sources flowing into one store |
-| **2** | Regime engine, screens, dossier builder | First automated Sunday brief — rules only, no AI yet |
-| **3** | Claude analyst pass, red team pass, validation gate | First full brief |
-| **4** | Risk engine, position ledger, circuit breakers, approval flow | **Paper trading begins** |
-| **5–8** | Paper trade live. Attribution dashboard. Backtest what's backtestable. Cut sources that don't earn their place | Four+ weeks of honest track record |
-| **9** | Go/no-go review against real numbers | Real capital, if expectancy is positive |
-
-**On the paper-trading gate.** Four to six weeks of paper trading costs about 10% of
-the year. Skipping it means funding an untested hypothesis with $100,000 — and,
-worse, having no way to tell a bad system from a bad month when the first drawdown
-arrives. The gate isn't caution for its own sake; it's the only way the attribution
-data in Stage 7 becomes trustworthy. If Pete wants to run a small real-money sleeve
-in parallel during this window to keep the psychology honest, that's a reasonable
-override.
-
----
-
-## 5. Running cost
-
-| Item | Monthly |
+| Item | Per month |
 |---|---|
-| GCP (Cloud Run, Cloud SQL small, Scheduler, Secret Manager) | $40–70 |
-| Anthropic API (weekly cadence, Opus for analyst + red team) | $20–60 |
-| Tier 1 data (FRED, EDGAR, Alpaca, Finnhub, CBOE, FINRA) | $0 |
-| Tiingo Power | ~$50 |
-| Polygon Advanced — only if trading options | ~$199 |
-| **Total** | **~$110–380** |
+| GCP — Cloud Run, Cloud SQL small, Scheduler, Secret Manager | $40–70 |
+| Anthropic API — weekly analyst plus red team | $20–60 |
+| Schwab Trader API — market data and account access | $0 |
+| Free tier — FRED, EDGAR, Finnhub, CBOE, FINRA, AAII, and the §3 free letters | $0 |
+| SentimenTrader | $100 |
+| **Total** | **$160–230** |
 
-Redis is optional at Phase 0; an in-process cache is enough for one user, and
-Memorystore can be added later if it's actually needed.
-
----
-
-## 6. Risk, capital structure, and taxes
-
-**Capital structure (proposal, Pete's call).** Split the $100k into a **core sleeve**
-(~$70k) run at the conservative regime-driven risk budget, and an **aggressive
-sleeve** (~$30k) where leveraged and options positions live. The aggressive sleeve
-is where the 10x math actually plays out; the core sleeve is what keeps the program
-running — and generating attribution data — through a bad quarter. If the
-aggressive sleeve goes to zero, the system survives and we learn why.
-
-**Ruin budget.** Before the first real trade, write down the number you are
-genuinely willing to lose in full. The dashboard tracks distance to it. This is a
-one-line entry in the config, and it's the most useful line in the repo.
-
-**Taxes — worth deciding before Phase 4, not after.** Every position here is held
-under a week, so every gain is short-term and taxed as ordinary income. At the
-returns being targeted the drag is severe: a 10x gross in a taxable account is
-dramatically less after federal and state short-term rates, and wash-sale rules
-will complicate re-entering names week after week. If any of this capital can sit
-in a Roth or traditional IRA, the same strategy compounds tax-free — at a 10x target
-that difference is worth more than any signal in Section 2. Worth a conversation
-with your accountant in the next two weeks, because it changes which account Phase 4
-points at.
+Polygon's $199 is gone with options. Tiingo (~$50) only if Schwab's history proves
+too thin for backtesting. Redis is optional at Phase 0.
 
 ---
 
-## 7. Open decisions
+## 8. What's still open
 
-These change what gets built, so they're worth answering early. None of them block
-Phase 0.
-
-1. **Instruments.** Stocks and ETFs only, or options too? This determines whether
-   the 10x target is arithmetically reachable, and whether we buy Polygon.
-2. **Account type.** Taxable, or is IRA/Roth capital available? (See Section 6.)
-3. **Broker.** Schwab, Fidelity, IBKR, Tastytrade, Alpaca? Determines how fills get
-   imported in Stage 7.
-4. **Newsletters.** Which ones do you already subscribe to? That list is the
-   starting point for Tier 3.
-5. **Subdomain.** Confirm the Meadowlark apex domain — the plan assumes something
-   like `trade.<meadowlark-domain>`.
-6. **Ruin budget.** The number from Section 6.
+1. **The TLD** for `trade.meadowlark.*` — one DNS record, resolved at Phase 0.
+2. **Whether the aggressive sleeve exists at all.** §1 argues the return has to come
+   from sector 3x products with asymmetric stops. Splitting into a core sleeve and a
+   3x sleeve isn't about preserving capital — you've set the ruin budget at the full
+   amount — it's about not blowing up in week 6 with no attribution data to show for
+   it. Worth deciding before Phase 4, not before Phase 0.
