@@ -1,0 +1,24 @@
+{
+  // Hide build output and dependencies from the file tree — they are generated,
+  // never edited, and they bury the files that matter.
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/.vite": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/package-lock.json": true
+  },
+
+  // Use the TypeScript version this project pins, not whichever one VS Code
+  // ships with — otherwise the errors you see here differ from the ones
+  // `npm run lint` reports.
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+
+  "[prisma]": {
+    "editor.defaultFormatter": "prisma.prisma"
+  }
+}

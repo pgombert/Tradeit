@@ -1,0 +1,5 @@
+{
+  // Only what this project actually uses. Prisma for schema syntax, Docker for
+  // the local database containers.
+  "recommendations": ["prisma.prisma", "ms-azuretools.vscode-docker"]
+}
