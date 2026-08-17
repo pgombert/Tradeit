@@ -2,8 +2,9 @@
 
 **Owner:** Pete Gombert (sole user, sole decision-maker)
 **Repo:** `pgombert/Tradeit`
-**Deploys to:** `trade.meadowlark.*` (GCP project `meadowlark-492419`)
-**Status:** Rev 4, 2026-08-16. Drawdown set at $30k. **Phase 0 built.**
+**Deploys to:** `https://trade.meadowlark.day` (dedicated GCP project `tradeit-505723`)
+**Status:** Rev 5, 2026-08-17. **Deployed and live.** Phase 0 shipped; Phase 1
+collectors underway (see §9).
 
 ---
 
@@ -18,7 +19,7 @@
 | **Target** | $200,000 in one year — +100%, or **+1.34% per week** |
 | **Max drawdown** | **$30,000** — hard floor at $70,000 |
 | **Newsletters** | None yet — starting set proposed in §3 |
-| **Domain** | `trade.meadowlark.*` (confirm TLD at Phase 0) |
+| **Domain** | `trade.meadowlark.day` — live, TLS valid, `/api/**` → Cloud Run |
 
 Three of these have consequences that reshape the system. They're worked through in
 §1 (what we can actually trade), §2 (what the account permits), and §3 (sources).
@@ -393,12 +394,10 @@ contributes anything.
 
 ## 8. What's still open
 
-1. **The TLD** for `trade.meadowlark.*` — Pete is setting up DNS. The Firebase
-   Hosting site is `tradeit-prod`; the custom domain gets attached to it.
-
-Both earlier open items are closed: the sleeve question (replaced by "leveraged
-products only in Risk-On Trend, capped at 20% of book") and the drawdown limit
-(set at $30,000).
+Nothing blocking. The domain (`trade.meadowlark.day`), the sleeve question
+(replaced by "leveraged products only in Risk-On Trend, capped at 20% of book"),
+and the drawdown limit ($30,000) are all closed. Open work is the remaining
+Phase 1 collectors — see §9.
 
 ---
 
@@ -441,15 +440,40 @@ screenshotted in light and dark mode. That last step caught two real bugs: a CSS
 selector that silently never matched, so the inverted-curve warning colour was
 dead, and a missing favicon throwing a console error.
 
-### Before Phase 1 can start
+## 9b. Deployed, and Phase 1 so far (2026-08-17)
 
-Three of these are Pete's, one is mine:
+**Live in production** (`tradeit-505723`, `trade.meadowlark.day`): Cloud SQL
+(migrated), the `tradeit-api` service, the `tradeit-migrate` and `tradeit-collect`
+jobs, and the weekday collector schedule. First real data has landed — all FRED
+series, the earnings calendar, and the VIX-term signal.
 
-1. **FRED API key** — free, two minutes, at `fredaccount.stlouisfed.org/apikeys`.
-   Until it's set the collector has nothing to pull.
-2. **Schwab developer app** — register at `developer.schwab.com`, create an app,
-   wait for "Ready for use". Read scopes only.
-3. **Schwab account paperwork** — apply for limited margin on the IRA, and sign
-   the leveraged/inverse ETF acknowledgment.
-4. **GCP provisioning** — Cloud SQL instance, Artifact Registry repo, the two
-   Cloud Run Jobs, and secrets. Mine to run once Pete confirms.
+**Collectors built and running** (`backend/src/collectors/`, registered in
+`jobs/collect.ts`):
+- **fred** — the twelve macro series plus `VXVCLS` (3-month VIX), added for term structure.
+- **earnings** — Finnhub earnings calendar, next 14 days → `EARNINGS_EVENT` observations.
+- **derived** — first in-house signal: VIX term structure (front/back ratio →
+  CONTANGO/FLAT/BACKWARDATION, −2..+2), computed from FRED data we already hold.
+
+**The never-trade boundary is machine-enforced.** Schwab's individual Trader API
+has no read-only scope, so the credentials can technically place orders. The
+guard is code discipline, now backed by a build-breaking test
+(`no-order-execution.test.ts`) that fails on any order-placement path or call.
+
+**Credentials in Secret Manager** (all wired into the service, names matching the
+code): `FRED_ID`, `FINHUB_APIKEY`, `SCHWAB_CLIENT_ID`, `SCHWAB_CLIENT_SECRET`,
+`ANTHROPIC_API_KEY`, plus DB/JWT secrets. Note the two hand-created names
+(`FRED_ID`, and `FINHUB_APIKEY` — missing an N); the code reads those exact names.
+
+**Next in Phase 1:**
+1. **Gmail newsletter ingestion** — the §3 free letters into `NEWSLETTER`/`LETTER_ITEM`.
+   Was blocked on the Google project; unblock and build.
+2. **SEC EDGAR** — better as an on-demand dossier lookup than a bulk collector,
+   since filings are per-candidate; revisit when Stage 2 defines candidates.
+3. **Sentiment/positioning** — free sources (NAAIM/AAII/CBOE) have no clean data
+   feed (fragile scraping); the plan earmarks paid SentimenTrader for this.
+4. **Schwab account reader** — OAuth + `GET /trader/v1/accounts` (read only).
+   Needs `SCHWAB_REDIRECT_URI` set to `https://trade.meadowlark.day/api/schwab/callback`.
+
+Deploys run via `gcloud builds submit --config=cloudbuild.backend.yaml .` (build →
+migrate → update jobs → deploy). Those commands need an allow rule in
+`~/.claude/settings.json` — Claude cannot self-grant them.
