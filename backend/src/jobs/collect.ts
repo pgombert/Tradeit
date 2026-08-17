@@ -5,11 +5,16 @@
  *   npm run collect            # all collectors
  *   npm run collect -- fred    # one of them
  */
+import { collectDerived } from '../collectors/derived.collector.js';
+import { collectEarnings } from '../collectors/earnings.collector.js';
 import { collectFred } from '../collectors/fred.collector.js';
 import { prisma } from '../lib/prisma.js';
 
+// Order matters for a full run: `derived` reads what `fred` just wrote.
 const COLLECTORS: Record<string, () => Promise<unknown>> = {
   fred: collectFred,
+  earnings: collectEarnings,
+  derived: collectDerived,
 };
 
 async function main(): Promise<void> {

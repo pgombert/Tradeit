@@ -69,17 +69,21 @@ else
   echo
   echo "  Your FRED API key — free, from https://fredaccount.stlouisfed.org/apikeys"
   echo "  Nothing you type is shown. Press enter to skip and add it later."
-  read -rsp "  FRED_API_KEY: " FRED_KEY
+  read -rsp "  FRED_ID: " FRED_KEY
+  echo
+  echo "  Your Finnhub API key — free, from https://finnhub.io/register (earnings)"
+  read -rsp "  FINHUB_APIKEY: " FINNHUB_KEY
   echo
 
   sed \
     -e "s|^JWT_SECRET=.*|JWT_SECRET=${JWT}|" \
     -e "s|^JWT_REFRESH_SECRET=.*|JWT_REFRESH_SECRET=${JWT_REFRESH}|" \
-    -e "s|^FRED_API_KEY=.*|FRED_API_KEY=${FRED_KEY}|" \
+    -e "s|^FRED_ID=.*|FRED_ID=${FRED_KEY}|" \
+    -e "s|^FINHUB_APIKEY=.*|FINHUB_APIKEY=${FINNHUB_KEY}|" \
     .env.example > backend/.env
 
   chmod 600 backend/.env
-  unset JWT JWT_REFRESH FRED_KEY
+  unset JWT JWT_REFRESH FRED_KEY FINNHUB_KEY
 
   ok "wrote backend/.env (gitignored, readable only by you)"
 fi
@@ -107,7 +111,7 @@ bold "6. Checks"
 
 npm test --silent >/dev/null 2>&1 && ok "tests pass" || warn "tests failed — run 'npm test' to see why"
 
-if grep -q '^FRED_API_KEY=.\+' backend/.env; then
+if grep -q '^FRED_ID=.\+' backend/.env; then
   bold "Pulling real data"
   npm run collect -- fred
 else

@@ -29,8 +29,9 @@ export const FRED_SERIES: readonly FredSeriesDef[] = [
   { id: 'BAMLH0A0HYM2', title: 'High Yield Option-Adjusted Spread', role: 'CREDIT', units: '%', frequency: 'DAILY' },
   { id: 'BAMLC0A0CM', title: 'Investment Grade Option-Adjusted Spread', role: 'CREDIT', units: '%', frequency: 'DAILY' },
 
-  // Volatility
-  { id: 'VIXCLS', title: 'CBOE Volatility Index', role: 'VOLATILITY', units: 'index', frequency: 'DAILY' },
+  // Volatility — the level and the 3-month, so the term structure can be derived
+  { id: 'VIXCLS', title: 'CBOE Volatility Index (30-day)', role: 'VOLATILITY', units: 'index', frequency: 'DAILY' },
+  { id: 'VXVCLS', title: 'CBOE S&P 500 3-Month Volatility Index', role: 'VOLATILITY', units: 'index', frequency: 'DAILY' },
 
   // Financial conditions
   { id: 'NFCI', title: 'Chicago Fed National Financial Conditions Index', role: 'CONDITIONS', units: 'index', frequency: 'WEEKLY' },

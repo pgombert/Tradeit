@@ -15,7 +15,8 @@ const schema = z.object({
   FRONTEND_URL: z.string().url().default('http://localhost:3002'),
   CORS_ORIGIN: z.string().default('http://localhost:3002'),
 
-  FRED_API_KEY: z.string().optional(),
+  FRED_ID: z.string().optional(),
+  FINHUB_APIKEY: z.string().optional(),
 
   SCHWAB_CLIENT_ID: z.string().optional(),
   SCHWAB_CLIENT_SECRET: z.string().optional(),

@@ -15,7 +15,8 @@ Not every credential carries the same weight:
 
 | Credential | Sensitivity | If it leaks |
 |---|---|---|
-| `FRED_API_KEY` | Low | Free, read-only, public data. Rotate in a minute. |
+| `FRED_ID` | Low | Free, read-only, public data. Rotate in a minute. |
+| `FINHUB_APIKEY` | Low | Free earnings-calendar key. Rotate in a minute. |
 | `ANTHROPIC_API_KEY` | Medium | Someone spends your API budget. Rotate and move on. |
 | `JWT_SECRET`, `JWT_REFRESH_SECRET` | High | Anyone can mint a valid login for your instance. |
 | `DATABASE_URL` | High | Direct access to everything Tradeit holds. |
@@ -58,7 +59,7 @@ Then edit `backend/.env`:
 
 - `JWT_SECRET` and `JWT_REFRESH_SECRET` — any long random strings, from
   `openssl rand -base64 48`. These should *not* match production.
-- `FRED_API_KEY` — your real key. Low-sensitivity and read-only, and the
+- `FRED_ID` — your real key. Low-sensitivity and read-only, and the
   collector can't do anything without it.
 - Schwab credentials — leave blank locally unless you're working on that
   collector. The dashboard renders an honest "not connected" state without them.
@@ -104,19 +105,19 @@ It is safe to re-run — each step checks for what it creates first. It will:
 Adding a secret later, without re-running anything:
 
 ```bash
-gcloud secrets create FRED_API_KEY --data-file=- --replication-policy=automatic
+gcloud secrets create FRED_ID --data-file=- --replication-policy=automatic
 # paste the value, then Ctrl-D. Nothing is echoed.
 
 gcloud run services update tradeit-api --region=us-central1 \
-  --update-secrets=FRED_API_KEY=FRED_API_KEY:latest
+  --update-secrets=FRED_ID=FRED_ID:latest
 gcloud run jobs update tradeit-collect --region=us-central1 \
-  --update-secrets=FRED_API_KEY=FRED_API_KEY:latest
+  --update-secrets=FRED_ID=FRED_ID:latest
 ```
 
 Rotating one:
 
 ```bash
-gcloud secrets versions add FRED_API_KEY --data-file=-
+gcloud secrets versions add FRED_ID --data-file=-
 ```
 
 Because everything is pinned to `:latest`, the new version is picked up on the

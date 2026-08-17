@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-PROJECT="${PROJECT:-meadowlark-492419}"
+PROJECT="${PROJECT:-tradeit-505723}"
 REGION="${REGION:-us-central1}"
 REPO="tradeit"
 
@@ -20,7 +20,7 @@ REPO="tradeit"
 # Meadowlark's existing Cloud SQL instance rather than paying ~$25/month for an
 # instance of its own. Set SQL_INSTANCE to provision separately if you'd rather
 # the two projects couldn't affect each other.
-SQL_INSTANCE="${SQL_INSTANCE:-meadowlark-db}"
+SQL_INSTANCE="${SQL_INSTANCE:-tradeit-db}"
 DB_NAME="${DB_NAME:-tradeit}"
 DB_USER="${DB_USER:-tradeit}"
 
@@ -127,9 +127,11 @@ ensure_secret() {
   esac
 }
 
+# Secret names match what the app reads from the environment.
 ensure_secret JWT_SECRET generate
 ensure_secret JWT_REFRESH_SECRET generate
-ensure_secret FRED_API_KEY prompt "Free key from https://fredaccount.stlouisfed.org/apikeys"
+ensure_secret FRED_ID prompt "Free key from https://fredaccount.stlouisfed.org/apikeys"
+ensure_secret FINHUB_APIKEY prompt "Free key from https://finnhub.io/register"
 ensure_secret SCHWAB_CLIENT_ID prompt "From your app at https://developer.schwab.com (read scopes only)"
 ensure_secret SCHWAB_CLIENT_SECRET prompt "From the same Schwab app"
 ensure_secret ANTHROPIC_API_KEY prompt "From https://console.anthropic.com (needed from Phase 3)"
@@ -160,9 +162,9 @@ CONNECTION_NAME="$(gcloud sql instances describe "$SQL_INSTANCE" --format='value
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/${REPO}/backend:latest"
 
 # Only secrets that actually exist are wired in, so a skipped prompt above
-# doesn't break the deploy.
+# doesn't break the deploy. The env var name equals the secret name.
 SECRET_FLAGS=""
-for name in DATABASE_URL JWT_SECRET JWT_REFRESH_SECRET FRED_API_KEY \
+for name in DATABASE_URL JWT_SECRET JWT_REFRESH_SECRET FRED_ID FINHUB_APIKEY \
             SCHWAB_CLIENT_ID SCHWAB_CLIENT_SECRET ANTHROPIC_API_KEY; do
   if gcloud secrets describe "$name" >/dev/null 2>&1; then
     SECRET_FLAGS="${SECRET_FLAGS}${SECRET_FLAGS:+,}${name}=${name}:latest"

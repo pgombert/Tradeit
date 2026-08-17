@@ -32,13 +32,13 @@ export interface FredCollectionResult {
 }
 
 async function fetchSeries(seriesId: string, observationStart: string): Promise<FredObservation[]> {
-  if (!env.FRED_API_KEY) {
-    throw new Error('FRED_API_KEY is not set — get a free key at https://fredaccount.stlouisfed.org/apikeys');
+  if (!env.FRED_ID) {
+    throw new Error('FRED_ID is not set — get a free key at https://fredaccount.stlouisfed.org/apikeys');
   }
 
   const url = new URL(FRED_BASE);
   url.searchParams.set('series_id', seriesId);
-  url.searchParams.set('api_key', env.FRED_API_KEY);
+  url.searchParams.set('api_key', env.FRED_ID);
   url.searchParams.set('file_type', 'json');
   url.searchParams.set('observation_start', observationStart);
 

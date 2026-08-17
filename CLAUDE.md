@@ -155,7 +155,8 @@ something is done.
 
 ## Deployment
 
-Google Cloud, project `meadowlark-492419`, region `us-central1`.
+Google Cloud, project `tradeit-505723`, region `us-central1`. Live at
+`https://trade.meadowlark.day` (Firebase Hosting site `tradeit-prod`).
 
 ```bash
 gcloud builds submit --config=cloudbuild.backend.yaml .   # API + jobs
