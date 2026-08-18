@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import type {
   AccountSnapshot,
   EconSeriesSummary,
@@ -170,6 +171,9 @@ export function Dashboard() {
       <header className="topbar">
         <h1 className="wordmark">Tradeit</h1>
         <div className="topbar-meta">
+          <Link to="/brief" className="linkish">
+            Weekly Brief →
+          </Link>
           <span>{user?.email}</span>
           <button type="button" className="linkish" onClick={signOut}>
             Sign out

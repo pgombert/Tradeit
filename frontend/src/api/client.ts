@@ -6,6 +6,7 @@ import type {
   EconSeriesSummary,
   LoginResponse,
   SchwabAccountOption,
+  StoredBrief,
   YieldCurveSnapshot,
 } from '@tradeit/shared';
 
@@ -138,6 +139,11 @@ export const dataApi = {
   account: () => api.get<AccountSnapshot>('/account').then((r) => r.data),
   risk: () => api.get<RiskStatus>('/risk').then((r) => r.data),
   collectorRuns: () => api.get<CollectorRunDto[]>('/collectors/runs').then((r) => r.data),
+};
+
+export const briefApi = {
+  /** The latest stored weekly brief (candidates, AI verdicts, sized portfolio). */
+  latest: () => api.get<StoredBrief>('/brief').then((r) => r.data),
 };
 
 export const schwabApi = {

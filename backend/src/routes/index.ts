@@ -160,7 +160,21 @@ router.get('/instruments', (_req, res) => {
 // one has been generated it falls back to the live rules-only brief. No orders.
 router.get('/brief', asyncHandler(async (_req, res) => {
   const stored = await getLatestBrief();
-  res.json(stored ?? (await buildBrief()));
+  if (stored) {
+    res.json(stored);
+    return;
+  }
+  // No brief generated yet — return the live rules-only brief in the same shape.
+  const live = await buildBrief();
+  res.json({
+    asOf: live.asOf,
+    generatedAt: new Date().toISOString(),
+    regime: live.regime,
+    candidates: live.candidates,
+    analysed: [],
+    portfolio: live.portfolio,
+    aiRan: false,
+  });
 }));
 
 // The live rules-only view (Stage 1-2 + rules portfolio), computed on demand —

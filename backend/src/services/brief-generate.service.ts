@@ -9,13 +9,7 @@
  * The AI supplies judgement; the numbers (prices, stops, sizes) stay ours.
  */
 import { Prisma } from '@prisma/client';
-import type {
-  AnalysedCandidate,
-  Candidate,
-  DossierRegime,
-  Indicators,
-  Portfolio,
-} from '@tradeit/shared';
+import type { AnalysedCandidate, Candidate, Indicators, StoredBrief } from '@tradeit/shared';
 import { prisma } from '../lib/prisma.js';
 import { buildBrief } from './brief.service.js';
 import { analystPass, llmConfigured, redTeamPass } from './llm.js';
@@ -23,20 +17,6 @@ import { constructPortfolio } from './portfolio.service.js';
 
 /** How many top candidates run through the (paid, slower) AI stages. */
 const ANALYSIS_LIMIT = 10;
-
-export interface StoredBrief {
-  asOf: string;
-  generatedAt: string;
-  regime: DossierRegime;
-  /** Stage 1 — the full ranked candidate list. */
-  candidates: Candidate[];
-  /** Stage 3-4 — the analysed candidates with their verdicts. */
-  analysed: AnalysedCandidate[];
-  /** Stage 5 — the sized portfolio, built from the survivors. */
-  portfolio: Portfolio;
-  /** True when the AI stages ran; false means a rules-only fallback. */
-  aiRan: boolean;
-}
 
 function validAsOf(asOf: string): Date {
   const d = new Date(`${asOf}T00:00:00Z`);

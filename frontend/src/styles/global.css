@@ -17,6 +17,9 @@
   --pos-wash: #eaf3ee;
   --shadow: 0 1px 2px rgba(20, 28, 37, 0.05), 0 8px 24px -16px rgba(20, 28, 37, 0.28);
 
+  /* A distinct step between the brass "warn" and the red "critical" — Risk-Off. */
+  --orange: #b5601f;
+
   /* Chart series. Validated for CVD separation and contrast against --surface. */
   --series-2y: #b07a05;
   --series-10y: #0f6fa8;
@@ -43,6 +46,8 @@
     --neg-wash: #241a18;
     --pos-wash: #16241d;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -16px rgba(0, 0, 0, 0.8);
+
+    --orange: #d98a4a;
 
     /* Stepped for the dark surface, not flipped from light. Both pass. */
     --series-2y: #b8892b;
@@ -400,9 +405,12 @@ th.num {
 .tone-good { color: var(--pos); }
 .tone-neutral { color: var(--muted); }
 .tone-warn { color: var(--brass); }
+.tone-orange { color: var(--orange); }
 .tone-critical { color: var(--neg); }
 
-/* A square marker distinguishes critical from warn without relying on hue. */
+/* Marker shape carries the state alongside hue: warn is a circle, orange a
+   diamond, critical a square — legible without relying on colour. */
+.tone-orange::before { border-radius: 1px; transform: rotate(45deg); }
 .tone-critical::before { border-radius: 1px; }
 
 .notice {
@@ -581,5 +589,119 @@ button[type='submit']:disabled {
 .banner.bad {
   background: var(--neg-wash);
   border: 1px solid var(--neg);
+  color: var(--neg);
+}
+
+/* ---- Weekly Brief ---- */
+
+.brief-headline {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.brief-regime {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  text-align: right;
+}
+
+/* Conviction stars — filled take the brass accent, the rest fade back. */
+.stars {
+  font-size: 0.9rem;
+  letter-spacing: 0.05em;
+  color: var(--brass);
+  white-space: nowrap;
+}
+
+.stars-empty {
+  color: var(--rule);
+}
+
+/* Small "leveraged" flag next to a position's instrument. */
+.tag {
+  display: inline-block;
+  margin-left: 8px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--brass);
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 1px 5px;
+  vertical-align: 1px;
+}
+
+.muted-arrow {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* Notes below the trades table — the "why" behind the sizing or an empty book. */
+.brief-notes {
+  margin: 16px 0 0;
+  padding-left: 20px;
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+}
+
+.brief-notes li {
+  margin-bottom: 4px;
+}
+
+/* ---- Verdict cards: survivors solid, killed dimmed ---- */
+
+.verdict-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.verdict-card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--pos);
+  border-radius: 4px;
+  box-shadow: var(--shadow);
+  padding: 16px 18px;
+}
+
+.verdict-card.killed {
+  border-left-color: var(--neg);
+  background: var(--surface-alt);
+  opacity: 0.72;
+}
+
+.verdict-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.verdict-symbol {
+  font-family: var(--serif);
+  font-size: 1.1rem;
+}
+
+.verdict-thesis {
+  margin: 0 0 8px;
+  color: var(--ink-soft);
+  max-width: 70ch;
+}
+
+.verdict-wrong {
+  margin: 0;
+}
+
+.verdict-death {
+  margin: 8px 0 0;
+  font-size: 0.88rem;
   color: var(--neg);
 }

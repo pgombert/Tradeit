@@ -8,6 +8,8 @@
  * a hallucinated number can never become a tradeable figure (CLAUDE.md rule 1).
  */
 import type { Conviction, Direction } from '../engine/instrument-selection.js';
+import type { Portfolio } from '../engine/portfolio.js';
+import type { Candidate, DossierRegime } from './candidate.js';
 
 export interface AnalystVerdict {
   symbol: string;
@@ -35,4 +37,19 @@ export interface AnalysedCandidate {
   analyst: AnalystVerdict;
   redTeam: RedTeamVerdict;
   survived: boolean;
+}
+
+/** The stored weekly brief — the whole pipeline's output, served by the API. */
+export interface StoredBrief {
+  asOf: string;
+  generatedAt: string;
+  regime: DossierRegime;
+  /** Stage 1 — the full ranked candidate list. */
+  candidates: Candidate[];
+  /** Stage 3-4 — the analysed candidates with their verdicts. */
+  analysed: AnalysedCandidate[];
+  /** Stage 5 — the sized portfolio, built from the survivors. */
+  portfolio: Portfolio;
+  /** True when the AI stages ran; false means a rules-only fallback. */
+  aiRan: boolean;
 }
