@@ -4,6 +4,7 @@ export * from './types/market.js';
 export * from './types/observation.js';
 export * from './types/risk.js';
 export * from './types/candidate.js';
+export * from './types/verdict.js';
 export * from './constants/fred-series.js';
 export * from './constants/instruments.js';
 export * from './constants/stock-universe.js';

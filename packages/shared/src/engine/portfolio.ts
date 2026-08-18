@@ -192,19 +192,38 @@ export function buildPortfolio(inputs: PositionInput[], cfg: PortfolioConfig): P
     positions.push(sized);
   }
 
+  // Settled-cash constraint: a cash IRA can't deploy more than it holds. If the
+  // per-position sizes sum past the book, scale every position down to fit.
+  const grossValue = positions.reduce((s, p) => s + p.positionValue, 0);
+  if (grossValue > cfg.capital && grossValue > 0) {
+    const scale = cfg.capital / grossValue;
+    for (const p of positions) {
+      const price = p.positionValue / p.shares; // shares > 0 by construction
+      const riskPerValue = p.riskDollars / p.positionValue;
+      p.shares = Math.floor(p.shares * scale);
+      p.positionValue = p.shares * price;
+      p.riskDollars = p.positionValue * riskPerValue;
+      p.bookFraction = p.positionValue / cfg.capital;
+    }
+    notes.push('Positions scaled to fit settled capital (no borrowing).');
+  }
+
+  const remaining = positions.filter((p) => p.shares > 0);
   if (leveragedNotional > 0) {
     notes.push(
       `Leveraged sleeve ${((leveragedNotional / cfg.capital) * 100).toFixed(1)}% of book (cap ${(MAX_LEVERAGED_BOOK_FRACTION * 100).toFixed(0)}%).`,
     );
   }
 
-  const capitalDeployed = positions.reduce((s, p) => s + p.positionValue, 0);
+  const capitalDeployed = remaining.reduce((s, p) => s + p.positionValue, 0);
+  const leveragedFraction =
+    remaining.filter((p) => p.leveraged).reduce((s, p) => s + p.positionValue, 0) / cfg.capital;
   return {
-    positions,
+    positions: remaining,
     weeklyRiskBudget: weeklyRisk,
     breaker,
     capitalDeployed,
-    leveragedFraction: leveragedNotional / cfg.capital,
+    leveragedFraction,
     notes,
   };
 }

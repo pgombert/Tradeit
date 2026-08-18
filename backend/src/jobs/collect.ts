@@ -11,6 +11,7 @@ import { collectFred } from '../collectors/fred.collector.js';
 import { collectGmail } from '../collectors/gmail.collector.js';
 import { collectSchwabPrices } from '../collectors/schwab.prices.collector.js';
 import { collectWeb } from '../collectors/web.collector.js';
+import { generateBrief } from '../services/brief-generate.service.js';
 import { prisma } from '../lib/prisma.js';
 
 // Order matters for a full run: `derived` reads what `fred` just wrote. `prices`
@@ -23,11 +24,18 @@ const COLLECTORS: Record<string, () => Promise<unknown>> = {
   web: collectWeb,
   derived: collectDerived,
   prices: collectSchwabPrices,
+  // `brief` is the weekly pipeline (Stages 1-5, AI included). It reads what the
+  // collectors wrote, is slow and paid, and is EXCLUDED from the default run —
+  // trigger it explicitly (`collect -- brief`) or on its own weekly schedule.
+  brief: generateBrief,
 };
+
+/** The default full run — every collector, but not the paid `brief` step. */
+const DEFAULT_STEPS = Object.keys(COLLECTORS).filter((n) => n !== 'brief');
 
 async function main(): Promise<void> {
   const requested = process.argv.slice(2).filter((a) => !a.startsWith('-'));
-  const names = requested.length > 0 ? requested : Object.keys(COLLECTORS);
+  const names = requested.length > 0 ? requested : DEFAULT_STEPS;
 
   const unknown = names.filter((n) => !(n in COLLECTORS));
   if (unknown.length > 0) {

@@ -74,6 +74,20 @@ describe('buildPortfolio', () => {
     expect(crisis.positions).toEqual([]);
   });
 
+  it('never deploys more than settled capital (scales to fit)', () => {
+    // Small ATR → each position wants the per-position cap; 8 of them would sum
+    // to 160% of book, so the settled-cash constraint scales them down.
+    const inputs: PositionInput[] = Array.from({ length: 8 }, (_, i) => ({
+      candidate: candidate(`S${i}`),
+      entry: 100,
+      atr: 1,
+      vehicle: { symbol: `S${i}`, leverageFactor: 1, isInverse: false, price: 100 },
+    }));
+    const pf = buildPortfolio(inputs, cfg());
+    expect(pf.capitalDeployed).toBeLessThanOrEqual(100_000 + 1);
+    expect(pf.notes.some((n) => n.includes('settled capital'))).toBe(true);
+  });
+
   it('spreads the weekly risk budget across at most the position cap', () => {
     const inputs: PositionInput[] = Array.from({ length: 20 }, (_, i) => ({
       candidate: candidate(`S${i}`),
