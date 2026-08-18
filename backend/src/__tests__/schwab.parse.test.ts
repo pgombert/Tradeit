@@ -6,8 +6,10 @@ import {
   decStr,
   firstAccountHash,
   isExpired,
+  maskAccountNumber,
   refreshTokenExpiryFrom,
   REFRESH_TOKEN_TTL_MS,
+  toAccountOption,
   toAccountSnapshot,
   toPositionDto,
   type SchwabAccount,
@@ -95,6 +97,7 @@ describe('toPositionDto', () => {
     });
     expect(dto).toEqual({
       symbol: 'SPY',
+      description: null,
       quantity: '100',
       averagePrice: '500.25',
       marketValue: '52000',
@@ -102,9 +105,52 @@ describe('toPositionDto', () => {
     });
   });
 
+  it('carries the instrument description for a coded symbol like a Treasury CUSIP', () => {
+    const dto = toPositionDto({
+      instrument: { symbol: '91282CLW9', assetType: 'FIXED_INCOME', description: 'US TREASURY NOTE 4.0% 2027' },
+      longQuantity: 250,
+      averagePrice: 97.51,
+      marketValue: 243486.33,
+      longOpenProfitLoss: -283.2,
+    });
+    expect(dto?.symbol).toBe('91282CLW9');
+    expect(dto?.description).toBe('US TREASURY NOTE 4.0% 2027');
+    expect(dto?.unrealizedPnl).toBe('-283.2');
+  });
+
   it('drops a position with no symbol or zero size rather than inventing one', () => {
     expect(toPositionDto({ instrument: {}, longQuantity: 10 })).toBeNull();
     expect(toPositionDto({ instrument: { symbol: 'QQQ' }, longQuantity: 0 })).toBeNull();
+  });
+});
+
+describe('maskAccountNumber', () => {
+  it('shows only the last four digits', () => {
+    expect(maskAccountNumber('12345678')).toBe('•••5678');
+    expect(maskAccountNumber('....9012')).toBe('•••9012');
+  });
+
+  it('degrades gracefully when there is nothing to mask', () => {
+    expect(maskAccountNumber(undefined)).toBe('account');
+    expect(maskAccountNumber('12')).toBe('12');
+  });
+});
+
+describe('toAccountOption', () => {
+  it('summarizes an account for the picker: masked number, type, total value', () => {
+    const option = toAccountOption('HASH-IRA', {
+      securitiesAccount: {
+        accountNumber: '55554321',
+        type: 'CASH',
+        currentBalances: { liquidationValue: 100000 },
+      },
+    });
+    expect(option).toEqual({
+      token: 'HASH-IRA',
+      accountLabel: '•••4321',
+      type: 'CASH',
+      totalValue: '100000',
+    });
   });
 });
 
@@ -138,7 +184,9 @@ describe('toAccountSnapshot', () => {
     expect(snap.connected).toBe(true);
     expect(snap.asOf).toBe('2026-08-17T20:00:00.000Z');
     expect(snap.totalValue).toBe('101234.5');
-    expect(snap.settledCash).toBe('25000');
+    // Settled cash is the cleared cash balance, NOT cashAvailableForTrading
+    // (which reports margin buying power on the taxable account).
+    expect(snap.settledCash).toBe('30000');
     expect(snap.unsettledCash).toBe('5000');
     expect(snap.positions).toHaveLength(1);
     expect(snap.positions[0]?.symbol).toBe('QQQ');

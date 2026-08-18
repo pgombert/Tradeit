@@ -110,6 +110,26 @@ router.get('/schwab/login', (req, res) => {
   res.json({ url });
 });
 
+// The accounts this Schwab login exposes, for the "which account?" picker.
+router.get(
+  '/schwab/accounts',
+  asyncHandler(async (_req, res) => {
+    res.json(await schwabService.listAccounts());
+  }),
+);
+
+const selectAccountSchema = z.object({ token: z.string().min(1) });
+
+// Choose which account to track (Pete's IRA). Idempotent; re-selectable.
+router.post(
+  '/schwab/select-account',
+  asyncHandler(async (req, res) => {
+    const { token } = selectAccountSchema.parse(req.body);
+    await schwabService.selectAccount(token);
+    res.json(await schwabService.getAccountSnapshot());
+  }),
+);
+
 router.get('/econ/series', asyncHandler(async (_req, res) => {
   res.json(await econService.listSeries());
 }));

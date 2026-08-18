@@ -21,21 +21,40 @@ export interface PriceBarDto {
 
 export interface PositionDto {
   symbol: string;
+  /** A readable name when the symbol is a code (e.g. a Treasury CUSIP). */
+  description: string | null;
   quantity: string;
   averagePrice: string;
   marketValue: string;
   unrealizedPnl: string;
 }
 
+/** One Schwab account to choose from when the login exposes more than one. */
+export interface SchwabAccountOption {
+  /** Opaque token used to select this account (Schwab's account hash). */
+  token: string;
+  /** Masked account number for display, e.g. "•••1234". */
+  accountLabel: string;
+  /** Schwab account type, e.g. CASH or MARGIN. */
+  type: string | null;
+  totalValue: string | null;
+}
+
 /**
  * Where the Schwab connection stands, so the dashboard can show the right thing
  * without ever inventing a number:
- *  - DISCONNECTED — never linked; show "Connect Schwab".
- *  - CONNECTED    — a live snapshot below.
- *  - EXPIRED      — the ~7-day login lapsed; show "Reconnect Schwab".
- *  - ERROR        — Schwab was reached but errored; show the message, not a $0.
+ *  - DISCONNECTED   — never linked; show "Connect Schwab".
+ *  - CONNECTED      — a live snapshot below.
+ *  - CHOOSE_ACCOUNT — the login exposes more than one account; pick which to track.
+ *  - EXPIRED        — the ~7-day login lapsed; show "Reconnect Schwab".
+ *  - ERROR          — Schwab was reached but errored; show the message, not a $0.
  */
-export type SchwabConnectionStatus = 'DISCONNECTED' | 'CONNECTED' | 'EXPIRED' | 'ERROR';
+export type SchwabConnectionStatus =
+  | 'DISCONNECTED'
+  | 'CONNECTED'
+  | 'CHOOSE_ACCOUNT'
+  | 'EXPIRED'
+  | 'ERROR';
 
 export interface AccountSnapshot {
   status: SchwabConnectionStatus;
@@ -51,4 +70,8 @@ export interface AccountSnapshot {
   reauthAfter: string | null;
   /** A human note for any non-connected state. Never carries a token. */
   message: string | null;
+  /** When status === CHOOSE_ACCOUNT, the accounts to pick from. */
+  accounts: SchwabAccountOption[];
+  /** The account currently being tracked, masked — null until one is chosen. */
+  selectedAccountLabel: string | null;
 }

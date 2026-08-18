@@ -5,6 +5,7 @@ import type {
   EconSeriesDetail,
   EconSeriesSummary,
   LoginResponse,
+  SchwabAccountOption,
   YieldCurveSnapshot,
 } from '@tradeit/shared';
 
@@ -142,4 +143,9 @@ export const dataApi = {
 export const schwabApi = {
   /** Ask the server where to send the user to grant read-only Schwab access. */
   loginUrl: () => api.get<{ url: string }>('/schwab/login').then((r) => r.data.url),
+  /** The accounts this login exposes, for the "which account?" picker. */
+  accounts: () => api.get<SchwabAccountOption[]>('/schwab/accounts').then((r) => r.data),
+  /** Choose which account to track; returns the fresh snapshot for it. */
+  selectAccount: (token: string) =>
+    api.post<AccountSnapshot>('/schwab/select-account', { token }).then((r) => r.data),
 };

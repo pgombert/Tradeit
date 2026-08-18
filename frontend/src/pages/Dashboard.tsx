@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
-import type { AccountSnapshot, EconSeriesSummary, YieldCurveSnapshot } from '@tradeit/shared';
+import type {
+  AccountSnapshot,
+  EconSeriesSummary,
+  SchwabAccountOption,
+  YieldCurveSnapshot,
+} from '@tradeit/shared';
 import {
   dataApi,
   schwabApi,
@@ -48,6 +53,10 @@ export function Dashboard() {
   const [regime, setRegime] = useState<RegimeResponse>();
   const [notice, setNotice] = useState<{ kind: 'ok' | 'bad'; text: string }>();
   const [connecting, setConnecting] = useState(false);
+  // Set when the user opens "change account"; the CHOOSE_ACCOUNT status carries
+  // its own list, so this is only for re-picking from a connected account.
+  const [picker, setPicker] = useState<SchwabAccountOption[]>();
+  const [selecting, setSelecting] = useState(false);
 
   // Show a one-line result after returning from the Schwab connect flow, then
   // strip the query param so a refresh doesn't repeat the banner.
@@ -77,6 +86,26 @@ export function Dashboard() {
         kind: 'bad',
         text: 'Could not start the Schwab connection — check the server credentials.',
       });
+    }
+  }
+
+  async function openAccountPicker(): Promise<void> {
+    try {
+      setPicker(await schwabApi.accounts());
+    } catch {
+      setNotice({ kind: 'bad', text: 'Could not load your Schwab accounts.' });
+    }
+  }
+
+  async function chooseAccount(token: string): Promise<void> {
+    try {
+      setSelecting(true);
+      setAccount(await schwabApi.selectAccount(token));
+      setPicker(undefined);
+    } catch {
+      setNotice({ kind: 'bad', text: 'Could not select that account — try again.' });
+    } finally {
+      setSelecting(false);
     }
   }
 
@@ -204,55 +233,114 @@ export function Dashboard() {
             {!account
               ? 'Loading…'
               : account.status === 'CONNECTED'
-                ? account.asOf
-                  ? `As of ${new Date(account.asOf).toLocaleString()}`
-                  : 'Connected'
-                : account.status === 'EXPIRED'
-                  ? 'Login expired'
-                  : account.status === 'ERROR'
-                    ? 'Connection error'
-                    : 'Not connected'}
+                ? [
+                    account.selectedAccountLabel ? `Account ${account.selectedAccountLabel}` : null,
+                    account.asOf ? `as of ${new Date(account.asOf).toLocaleString()}` : 'connected',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')
+                : account.status === 'CHOOSE_ACCOUNT'
+                  ? 'Choose an account'
+                  : account.status === 'EXPIRED'
+                    ? 'Login expired'
+                    : account.status === 'ERROR'
+                      ? 'Connection error'
+                      : 'Not connected'}
           </p>
         </div>
 
-        {account && account.status !== 'CONNECTED' && (
+        {/* Account picker — when Schwab exposes more than one account, or when
+            the user asks to switch which account is tracked. */}
+        {account && (picker || account.status === 'CHOOSE_ACCOUNT') && (
           <div style={{ marginTop: 12 }}>
-            {account.message && (
-              <p className="tile-note" style={{ marginBottom: 12 }}>
-                {account.message}
-              </p>
+            <p className="tile-note" style={{ marginBottom: 12 }}>
+              {account.status === 'CHOOSE_ACCOUNT'
+                ? 'More than one Schwab account is linked — choose which to track (your IRA).'
+                : 'Choose which account to track.'}
+            </p>
+            <div className="tbl-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Account</th>
+                    <th>Type</th>
+                    <th className="num">Total value</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {(picker ?? account.accounts).map((a) => (
+                    <tr key={a.token}>
+                      <td>
+                        <strong>{a.accountLabel}</strong>
+                      </td>
+                      <td>{a.type ?? '—'}</td>
+                      <td className="num">{fmtMoney(a.totalValue) ?? '—'}</td>
+                      <td className="num">
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={selecting}
+                          onClick={() => chooseAccount(a.token)}
+                        >
+                          {selecting ? 'Selecting…' : 'Track this'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {picker && (
+              <button
+                type="button"
+                className="linkish"
+                style={{ marginTop: 8 }}
+                onClick={() => setPicker(undefined)}
+              >
+                Cancel
+              </button>
             )}
-            <button type="button" className="btn" onClick={connectSchwab} disabled={connecting}>
-              {connecting
-                ? 'Opening Schwab…'
-                : account.status === 'EXPIRED'
-                  ? 'Reconnect Schwab'
-                  : 'Connect Schwab'}
-            </button>
           </div>
         )}
 
-        {account?.status === 'CONNECTED' && (
+        {/* Connect / reconnect — for the states with no account to show. */}
+        {account &&
+          !picker &&
+          (account.status === 'DISCONNECTED' ||
+            account.status === 'EXPIRED' ||
+            account.status === 'ERROR') && (
+            <div style={{ marginTop: 12 }}>
+              {account.message && (
+                <p className="tile-note" style={{ marginBottom: 12 }}>
+                  {account.message}
+                </p>
+              )}
+              <button type="button" className="btn" onClick={connectSchwab} disabled={connecting}>
+                {connecting
+                  ? 'Opening Schwab…'
+                  : account.status === 'EXPIRED'
+                    ? 'Reconnect Schwab'
+                    : 'Connect Schwab'}
+              </button>
+            </div>
+          )}
+
+        {account?.status === 'CONNECTED' && !picker && (
           <>
             <div className="tiles" style={{ marginTop: 16 }}>
               <div className="tile">
                 <div className="tile-label">Total value</div>
-                <div className="tile-value">
-                  <Value value={fmtMoney(account.totalValue)} />
-                </div>
+                <div className="tile-value">{fmtMoney(account.totalValue) ?? '—'}</div>
               </div>
               <div className="tile">
                 <div className="tile-label">Settled cash</div>
-                <div className="tile-value">
-                  <Value value={fmtMoney(account.settledCash)} />
-                </div>
-                <div className="tile-note">Available to trade now</div>
+                <div className="tile-value">{fmtMoney(account.settledCash) ?? '—'}</div>
+                <div className="tile-note">Cleared and settled</div>
               </div>
               <div className="tile">
                 <div className="tile-label">Unsettled cash</div>
-                <div className="tile-value">
-                  <Value value={fmtMoney(account.unsettledCash)} />
-                </div>
+                <div className="tile-value">{fmtMoney(account.unsettledCash) ?? '—'}</div>
                 <div className="tile-note">Still settling (T+1)</div>
               </div>
             </div>
@@ -264,7 +352,7 @@ export function Dashboard() {
                 <table>
                   <thead>
                     <tr>
-                      <th>Symbol</th>
+                      <th>Holding</th>
                       <th className="num">Quantity</th>
                       <th className="num">Avg price</th>
                       <th className="num">Market value</th>
@@ -275,7 +363,8 @@ export function Dashboard() {
                     {account.positions.map((p) => (
                       <tr key={p.symbol}>
                         <td>
-                          <strong>{p.symbol}</strong>
+                          <strong>{p.description ?? p.symbol}</strong>
+                          {p.description && <div className="tile-note">{p.symbol}</div>}
                         </td>
                         <td className="num">{p.quantity}</td>
                         <td className="num">{fmtMoney(p.averagePrice) ?? '—'}</td>
@@ -289,6 +378,15 @@ export function Dashboard() {
                 </table>
               </div>
             )}
+
+            <button
+              type="button"
+              className="linkish"
+              style={{ marginTop: 12 }}
+              onClick={openAccountPicker}
+            >
+              Change account
+            </button>
           </>
         )}
       </div>
