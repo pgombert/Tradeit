@@ -8,12 +8,18 @@
 import { collectDerived } from '../collectors/derived.collector.js';
 import { collectEarnings } from '../collectors/earnings.collector.js';
 import { collectFred } from '../collectors/fred.collector.js';
+import { collectGmail } from '../collectors/gmail.collector.js';
+import { collectSchwabPrices } from '../collectors/schwab.prices.collector.js';
+import { collectWeb } from '../collectors/web.collector.js';
 import { prisma } from '../lib/prisma.js';
 
 // Order matters for a full run: `derived` reads what `fred` just wrote.
 const COLLECTORS: Record<string, () => Promise<unknown>> = {
   fred: collectFred,
   earnings: collectEarnings,
+  gmail: collectGmail,
+  web: collectWeb,
+  prices: collectSchwabPrices,
   derived: collectDerived,
 };
 

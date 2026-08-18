@@ -105,8 +105,8 @@ export interface CollectorRunDto {
 }
 
 export const authApi = {
-  login: (email: string, password: string) =>
-    api.post<LoginResponse>('/auth/login', { email, password }).then((r) => r.data),
+  google: (idToken: string) =>
+    api.post<LoginResponse>('/auth/google', { idToken }).then((r) => r.data),
 };
 
 export interface RegimeSignal {
@@ -137,4 +137,9 @@ export const dataApi = {
   account: () => api.get<AccountSnapshot>('/account').then((r) => r.data),
   risk: () => api.get<RiskStatus>('/risk').then((r) => r.data),
   collectorRuns: () => api.get<CollectorRunDto[]>('/collectors/runs').then((r) => r.data),
+};
+
+export const schwabApi = {
+  /** Ask the server where to send the user to grant read-only Schwab access. */
+  loginUrl: () => api.get<{ url: string }>('/schwab/login').then((r) => r.data.url),
 };

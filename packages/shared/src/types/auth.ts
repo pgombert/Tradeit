@@ -3,9 +3,9 @@ export interface AuthUser {
   email: string;
 }
 
-export interface LoginRequest {
-  email: string;
-  password: string;
+export interface GoogleLoginRequest {
+  /** The ID token minted by Google Identity Services in the browser. */
+  idToken: string;
 }
 
 export interface AuthTokens {

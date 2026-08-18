@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { AccountSnapshot, EconSeriesSummary, YieldCurveSnapshot } from '@tradeit/shared';
-import { dataApi, type CollectorRunDto, type RegimeResponse, type RiskStatus } from '../api/client';
+import {
+  dataApi,
+  schwabApi,
+  type CollectorRunDto,
+  type RegimeResponse,
+  type RiskStatus,
+} from '../api/client';
 import { RegimePanel } from '../components/RegimePanel';
 import { YieldCurveChart, type Series } from '../components/YieldCurveChart';
 import { useAuth } from '../context/AuthContext';
@@ -10,6 +16,19 @@ const money = new Intl.NumberFormat('en-US', {
   currency: 'USD',
   maximumFractionDigits: 0,
 });
+
+/** Cents matter for prices and P&L, so the account panel uses two decimals. */
+const money2 = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/** Format a money string for display, or undefined when the value is unknown. */
+function fmtMoney(value: string | null): string | undefined {
+  return value === null ? undefined : money2.format(Number(value));
+}
 
 /** Undefined means still loading and renders a skeleton; never a zero. */
 function Value({ value, className }: { value: string | undefined; className?: string }) {
@@ -27,6 +46,39 @@ export function Dashboard() {
   const [runs, setRuns] = useState<CollectorRunDto[]>();
   const [chart, setChart] = useState<Series[]>();
   const [regime, setRegime] = useState<RegimeResponse>();
+  const [notice, setNotice] = useState<{ kind: 'ok' | 'bad'; text: string }>();
+  const [connecting, setConnecting] = useState(false);
+
+  // Show a one-line result after returning from the Schwab connect flow, then
+  // strip the query param so a refresh doesn't repeat the banner.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const outcome = params.get('schwab');
+    if (!outcome) return;
+    if (outcome === 'connected') {
+      setNotice({ kind: 'ok', text: 'Schwab connected — live account data will load shortly.' });
+    } else {
+      const reason = params.get('reason');
+      setNotice({
+        kind: 'bad',
+        text: `Schwab connection failed${reason ? ` (${reason})` : ''}. Please try again.`,
+      });
+    }
+    window.history.replaceState({}, '', window.location.pathname);
+  }, []);
+
+  async function connectSchwab(): Promise<void> {
+    try {
+      setConnecting(true);
+      window.location.href = await schwabApi.loginUrl();
+    } catch {
+      setConnecting(false);
+      setNotice({
+        kind: 'bad',
+        text: 'Could not start the Schwab connection — check the server credentials.',
+      });
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -96,6 +148,8 @@ export function Dashboard() {
         </div>
       </header>
 
+      {notice && <div className={`banner ${notice.kind === 'ok' ? 'ok' : 'bad'}`}>{notice.text}</div>}
+
       {/* ---- Stage 0: the call that gates everything downstream ---- */}
       <p className="section-label">Market regime</p>
       <RegimePanel regime={regime} />
@@ -130,9 +184,113 @@ export function Dashboard() {
             <Value value={account?.connected ? (account.totalValue ?? undefined) : undefined} />
           </div>
           <div className="tile-note">
-            {account && !account.connected ? 'Schwab not connected yet' : 'Live'}
+            {!account || account.status === 'CONNECTED'
+              ? 'Live'
+              : account.status === 'EXPIRED'
+                ? 'Login expired — reconnect below'
+                : account.status === 'ERROR'
+                  ? 'Connection error — see Account'
+                  : 'Schwab not connected yet'}
           </div>
         </div>
+      </div>
+
+      {/* ---- Schwab account: balance, cash split, and open positions ---- */}
+      <p className="section-label">Account</p>
+      <div className="panel">
+        <div className="panel-head">
+          <h2 className="panel-title">Schwab</h2>
+          <p className="panel-sub">
+            {!account
+              ? 'Loading…'
+              : account.status === 'CONNECTED'
+                ? account.asOf
+                  ? `As of ${new Date(account.asOf).toLocaleString()}`
+                  : 'Connected'
+                : account.status === 'EXPIRED'
+                  ? 'Login expired'
+                  : account.status === 'ERROR'
+                    ? 'Connection error'
+                    : 'Not connected'}
+          </p>
+        </div>
+
+        {account && account.status !== 'CONNECTED' && (
+          <div style={{ marginTop: 12 }}>
+            {account.message && (
+              <p className="tile-note" style={{ marginBottom: 12 }}>
+                {account.message}
+              </p>
+            )}
+            <button type="button" className="btn" onClick={connectSchwab} disabled={connecting}>
+              {connecting
+                ? 'Opening Schwab…'
+                : account.status === 'EXPIRED'
+                  ? 'Reconnect Schwab'
+                  : 'Connect Schwab'}
+            </button>
+          </div>
+        )}
+
+        {account?.status === 'CONNECTED' && (
+          <>
+            <div className="tiles" style={{ marginTop: 16 }}>
+              <div className="tile">
+                <div className="tile-label">Total value</div>
+                <div className="tile-value">
+                  <Value value={fmtMoney(account.totalValue)} />
+                </div>
+              </div>
+              <div className="tile">
+                <div className="tile-label">Settled cash</div>
+                <div className="tile-value">
+                  <Value value={fmtMoney(account.settledCash)} />
+                </div>
+                <div className="tile-note">Available to trade now</div>
+              </div>
+              <div className="tile">
+                <div className="tile-label">Unsettled cash</div>
+                <div className="tile-value">
+                  <Value value={fmtMoney(account.unsettledCash)} />
+                </div>
+                <div className="tile-note">Still settling (T+1)</div>
+              </div>
+            </div>
+
+            {account.positions.length === 0 ? (
+              <div className="empty">No open positions.</div>
+            ) : (
+              <div className="tbl-scroll" style={{ marginTop: 16 }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Symbol</th>
+                      <th className="num">Quantity</th>
+                      <th className="num">Avg price</th>
+                      <th className="num">Market value</th>
+                      <th className="num">Unrealized P&amp;L</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {account.positions.map((p) => (
+                      <tr key={p.symbol}>
+                        <td>
+                          <strong>{p.symbol}</strong>
+                        </td>
+                        <td className="num">{p.quantity}</td>
+                        <td className="num">{fmtMoney(p.averagePrice) ?? '—'}</td>
+                        <td className="num">{fmtMoney(p.marketValue) ?? '—'}</td>
+                        <td className={`num ${Number(p.unrealizedPnl) >= 0 ? 'pos' : 'neg'}`}>
+                          {fmtMoney(p.unrealizedPnl) ?? '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* ---- The curve ---- */}

@@ -14,7 +14,9 @@ datasource db {
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
-  passwordHash String
+  // Sign-in is Google-only. Kept nullable so an account can exist without ever
+  // having held a password.
+  passwordHash String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -171,6 +173,37 @@ model Observation {
   @@index([scope, observedAt(sort: Desc)])
   @@index([kind, observedAt(sort: Desc)])
   @@map("observations")
+}
+
+// ---------------------------------------------------------------------------
+// Schwab OAuth — the single user's brokerage connection
+//
+// Read-only Trader API access (docs/PLAN.md §2). Exactly one account, so exactly
+// one row, keyed on a constant id. Schwab's refresh token lives ~7 days, so this
+// is re-minted about weekly through the dashboard "Connect Schwab" flow; the
+// 30-minute access token is refreshed from it in the background between mints.
+// A brokerage refresh token is the highest-sensitivity secret we hold — it never
+// leaves the server, and no code here calls a trading endpoint.
+// ---------------------------------------------------------------------------
+
+model SchwabToken {
+  /// Constant singleton key — one account means one row.
+  id String @id
+
+  accessToken           String   @map("access_token")
+  refreshToken          String   @map("refresh_token")
+  accessTokenExpiresAt  DateTime @map("access_token_expires_at")
+  refreshTokenExpiresAt DateTime @map("refresh_token_expires_at")
+  scope                 String?
+
+  /// The hashed account id Schwab requires in account URLs. Fetched once after a
+  /// connect and cached, so each read need not re-request the account list.
+  accountHash String? @map("account_hash")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("schwab_tokens")
 }
 
 // ---------------------------------------------------------------------------

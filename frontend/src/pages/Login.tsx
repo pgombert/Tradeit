@@ -1,29 +1,79 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
-export function Login() {
-  const { signIn } = useAuth();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+const GSI_SRC = 'https://accounts.google.com/gsi/client';
+const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
-  async function handleSubmit(event: FormEvent): Promise<void> {
-    event.preventDefault();
-    setBusy(true);
-    setError(null);
-
-    try {
-      await signIn(email, password);
-    } catch {
-      setError('That email and password combination was not recognised.');
-      setBusy(false);
+/** Loads the Google Identity Services script once, resolving when it's ready. */
+function loadGoogleScript(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (window.google?.accounts?.id) {
+      resolve();
+      return;
     }
-  }
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${GSI_SRC}"]`);
+    if (existing) {
+      existing.addEventListener('load', () => resolve());
+      existing.addEventListener('error', () => reject(new Error('Google script failed to load')));
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = GSI_SRC;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Google script failed to load'));
+    document.head.appendChild(script);
+  });
+}
+
+export function Login() {
+  const { signInWithGoogle } = useAuth();
+  const buttonRef = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!CLIENT_ID) {
+      setError('Google sign-in is not configured yet.');
+      return;
+    }
+
+    let cancelled = false;
+
+    loadGoogleScript()
+      .then(() => {
+        if (cancelled || !buttonRef.current || !window.google) return;
+
+        window.google.accounts.id.initialize({
+          client_id: CLIENT_ID,
+          callback: (response) => {
+            setError(null);
+            signInWithGoogle(response.credential).catch(() => {
+              setError('That Google account is not allowed to sign in here.');
+            });
+          },
+        });
+
+        window.google.accounts.id.renderButton(buttonRef.current, {
+          type: 'standard',
+          theme: 'filled_black',
+          size: 'large',
+          text: 'signin_with',
+          shape: 'pill',
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setError('Could not reach Google. Check your connection and retry.');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [signInWithGoogle]);
 
   return (
     <div className="login-wrap">
-      <form className="login-card" onSubmit={(e) => void handleSubmit(e)}>
+      <div className="login-card">
         <h1>Tradeit</h1>
         <p>Research desk. One account.</p>
 
@@ -33,32 +83,8 @@ export function Login() {
           </div>
         )}
 
-        <label className="field">
-          <span>Email</span>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="username"
-            required
-          />
-        </label>
-
-        <label className="field">
-          <span>Password</span>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            required
-          />
-        </label>
-
-        <button type="submit" disabled={busy}>
-          {busy ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
+        <div ref={buttonRef} className="google-button" />
+      </div>
     </div>
   );
 }

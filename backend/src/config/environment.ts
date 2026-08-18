@@ -12,6 +12,10 @@ const schema = z.object({
   JWT_SECRET: z.string().min(16),
   JWT_REFRESH_SECRET: z.string().min(16),
 
+  // "Sign in with Google" OAuth client. This is the audience every Google ID
+  // token is verified against — a token minted for any other client is rejected.
+  GOOGLE_CLIENT_ID: z.string().min(1),
+
   FRONTEND_URL: z.string().url().default('http://localhost:3002'),
   CORS_ORIGIN: z.string().default('http://localhost:3002'),
 
@@ -21,6 +25,13 @@ const schema = z.object({
   SCHWAB_CLIENT_ID: z.string().optional(),
   SCHWAB_CLIENT_SECRET: z.string().optional(),
   SCHWAB_REDIRECT_URI: z.string().optional(),
+
+  // Gmail newsletter collector. OAuth against the dedicated newsletter inbox;
+  // read-only scope. The refresh token is minted once and stored in Secret
+  // Manager — the collector exchanges it for an access token on each run.
+  GMAIL_CLIENT_ID: z.string().optional(),
+  GMAIL_CLIENT_SECRET: z.string().optional(),
+  GMAIL_REFRESH_TOKEN: z.string().optional(),
 
   STARTING_CAPITAL: z.coerce.number().positive().default(100_000),
   MAX_DRAWDOWN: z.coerce.number().positive().default(30_000),

@@ -453,6 +453,36 @@ series, the earnings calendar, and the VIX-term signal.
 - **earnings** — Finnhub earnings calendar, next 14 days → `EARNINGS_EVENT` observations.
 - **derived** — first in-house signal: VIX term structure (front/back ratio →
   CONTANGO/FLAT/BACKWARDATION, −2..+2), computed from FRED data we already hold.
+- **gmail** — reads the dedicated newsletter inbox (`tradeit1971@gmail.com`) over
+  the Gmail API (read-only OAuth) and writes each message as a
+  `NEWSLETTER`/`LETTER_ITEM` observation, keyed on the Gmail message id so re-runs
+  are idempotent. **Capture-everything model:** the inbox is subscription-only, so
+  every message is ingested and attributed — a sender in
+  `packages/shared/src/constants/newsletter-sources.ts` gets its curated name,
+  author and stage (`recognized: true`); an unrecognized sender is kept and grouped
+  by its own address (`recognized: false`, `stage: UNCLASSIFIED`) so nothing is
+  dropped and the nice-name mapping is filled in over time from the senders we
+  actually see. The decode/attribution logic is the pure `gmail.parse.ts` module,
+  tested against fixtures. **Deployed and live (2026-08-17);** a run captures the
+  inbox with no auth error. Next step is operational: subscribe the §3/master-list
+  letters to the inbox (a click-through checklist was produced), then promote the
+  high-value `recognized:false` senders into the registry.
+- **web** — the content engine for research published to the open web, not email:
+  blogs, Substacks, firm insight pages, Fed research. Two mechanisms per source
+  (`packages/shared/src/constants/web-sources.ts`): **FEED** reads a site's
+  RSS/Atom feed (robust — Substacks, WordPress, Blogger, Fed blogs); **SCRAPE**
+  reads a listing page for article links where no feed exists (asset-manager
+  marketing pages — brittle, expects upkeep). Both write `NEWSLETTER`/`LETTER_ITEM`
+  observations keyed on the canonical article URL, `payload.channel` =
+  `WEB_FEED`/`WEB_SCRAPE`, alongside the email letters. Pure modules:
+  `feed.parse.ts` (RSS/Atom → items, URL canonicalization) and `extract.ts` (jsdom +
+  Readability article extraction; anchor scraping). Each source is isolated — a 404,
+  a bot-block (some feeds 403 our UA), or a redesigned page is logged and skipped
+  without failing the run. **Deployed (2026-08-17)** with a starter registry of ~16
+  feeds + 1 scrape source. Known limit: JS-rendered (SPA) firm pages like JPM's
+  insight hub yield no links from static HTML and need a headless-render step
+  (future); server-rendered listings scrape fine. Web ingestion is registry-driven —
+  the open web is unbounded.
 
 **The never-trade boundary is machine-enforced.** Schwab's individual Trader API
 has no read-only scope, so the credentials can technically place orders. The
@@ -465,8 +495,10 @@ code): `FRED_ID`, `FINHUB_APIKEY`, `SCHWAB_CLIENT_ID`, `SCHWAB_CLIENT_SECRET`,
 (`FRED_ID`, and `FINHUB_APIKEY` — missing an N); the code reads those exact names.
 
 **Next in Phase 1:**
-1. **Gmail newsletter ingestion** — the §3 free letters into `NEWSLETTER`/`LETTER_ITEM`.
-   Was blocked on the Google project; unblock and build.
+1. **Gmail newsletter ingestion** — ✅ **built** (the `gmail` collector above).
+   Remaining is operational, not code: create the OAuth client and mint the
+   refresh token (docs/SETUP.md), then confirm the §3 letters actually match the
+   registry's sender rules once real mail lands.
 2. **SEC EDGAR** — better as an on-demand dossier lookup than a bulk collector,
    since filings are per-candidate; revisit when Stage 2 defines candidates.
 3. **Sentiment/positioning** — free sources (NAAIM/AAII/CBOE) have no clean data
