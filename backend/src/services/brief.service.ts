@@ -13,11 +13,13 @@ import {
   type Candidate,
   type Dossier,
   type DossierRegime,
+  type Portfolio,
 } from '@tradeit/shared';
 import { prisma } from '../lib/prisma.js';
 import { getRegime } from './regime.service.js';
 import { runStage1, type SecurityBars } from './candidates.parse.js';
 import { buildDossier, observationToEvidence } from './dossier.parse.js';
+import { constructPortfolio } from './portfolio.service.js';
 
 /** ~1 trading year — enough for the 200-day average and 6-month returns. */
 const BARS_LOOKBACK = 260;
@@ -31,6 +33,7 @@ export interface Brief {
   regime: DossierRegime;
   candidates: Candidate[];
   dossiers: Dossier[];
+  portfolio: Portfolio;
 }
 
 /** Load a security's most recent bars, oldest-first, prices as numbers. */
@@ -137,5 +140,7 @@ export async function buildBrief(): Promise<Brief> {
     return buildDossier(c, price, regime, context, asOf);
   });
 
-  return { asOf, regime, candidates, dossiers };
+  const portfolio = await constructPortfolio(candidates, indicatorsBySymbol, regime, asOf);
+
+  return { asOf, regime, candidates, dossiers, portfolio };
 }
