@@ -51,7 +51,8 @@ export const WEB_SOURCES: readonly WebSourceDef[] = [
   { key: 'fed-guy', name: 'Fed Guy', author: 'Joseph Wang', stage: 'INTERNALS', tier: 1, channel: 'FEED', feed: 'https://fedguy.com/feed/', homepage: 'https://fedguy.com' },
   { key: 'wolf-street', name: 'Wolf Street', author: 'Wolf Richter', stage: 'REGIME', tier: 1, channel: 'FEED', feed: 'https://wolfstreet.com/feed/', homepage: 'https://wolfstreet.com' },
   { key: 'marginal-revolution', name: 'Marginal Revolution', author: 'Tyler Cowen & Alex Tabarrok', stage: 'REGIME', tier: 1, channel: 'FEED', feed: 'https://marginalrevolution.com/feed', homepage: 'https://marginalrevolution.com' },
-  { key: 'calculated-risk-web', name: 'Calculated Risk', author: 'Bill McBride', stage: 'REGIME', tier: 1, channel: 'FEED', feed: 'https://www.calculatedriskblog.com/feeds/posts/default?alt=rss', homepage: 'https://www.calculatedriskblog.com' },
+  // Calculated Risk (Bill McBride) removed 2026-08-17 — the blog ended in Jan 2026
+  // ("This is the End and a New Beginning"), so the feed carries no current posts.
 
   // --- Quant / factor — RSS ----------------------------------------------
   { key: 'alpha-architect', name: 'Alpha Architect', author: 'Wes Gray et al.', stage: 'FACTOR', tier: 1, channel: 'FEED', feed: 'https://alphaarchitect.com/feed/', homepage: 'https://alphaarchitect.com' },

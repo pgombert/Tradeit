@@ -64,14 +64,7 @@ export const NEWSLETTER_SOURCES: readonly NewsletterSourceDef[] = [
     tier: 1,
     match: ['schwab.com'],
   },
-  {
-    key: 'calculated-risk',
-    name: 'Calculated Risk',
-    author: 'Bill McBride',
-    stage: 'REGIME',
-    tier: 1,
-    match: ['calculatedrisk', 'calculatedriskblog.com'],
-  },
+  // Calculated Risk (Bill McBride) removed 2026-08-17 — the blog ended Jan 2026.
   {
     key: 'topdown-charts',
     name: 'Topdown Charts',
