@@ -13,6 +13,7 @@ import {
   type Candidate,
   type Dossier,
   type DossierRegime,
+  type EvidenceLine,
   type Portfolio,
 } from '@tradeit/shared';
 import { prisma } from '../lib/prisma.js';
@@ -26,6 +27,8 @@ const BARS_LOOKBACK = 260;
 /** How far back market-context observations are pulled for the dossier. */
 const CONTEXT_DAYS = 21;
 const CONTEXT_LIMIT = 60;
+/** Cap on evidence lines per dossier: per-ticker items first, then market context. */
+const DOSSIER_CONTEXT_LIMIT = 40;
 const BENCHMARK = 'SPY';
 
 export interface Brief {
@@ -68,6 +71,31 @@ async function loadContext(): Promise<ReturnType<typeof observationToEvidence>[]
     select: { id: true, source: true, kind: true, scope: true, observedAt: true, payload: true, url: true },
   });
   return rows.map((r) => observationToEvidence({ ...r, source: r.source, kind: r.kind }));
+}
+
+/** Per-ticker observations (earnings, filings, news scoped to a symbol) in a
+ * window that spans recent history and the coming two weeks — so an upcoming
+ * earnings date shows up as a catalyst. Grouped by scope (the symbol). */
+async function loadPerSymbolContext(symbols: string[]): Promise<Map<string, EvidenceLine[]>> {
+  const from = new Date();
+  from.setDate(from.getDate() - CONTEXT_DAYS);
+  const to = new Date();
+  to.setDate(to.getDate() + 21); // catch upcoming earnings (calendar is future-dated)
+
+  const rows = await prisma.observation.findMany({
+    where: { scope: { in: symbols }, observedAt: { gte: from, lte: to } },
+    orderBy: { observedAt: 'asc' },
+    select: { id: true, source: true, kind: true, scope: true, observedAt: true, payload: true, url: true },
+  });
+
+  const bySymbol = new Map<string, EvidenceLine[]>();
+  for (const r of rows) {
+    const line = observationToEvidence({ ...r, source: r.source, kind: r.kind });
+    const arr = bySymbol.get(r.scope) ?? [];
+    arr.push(line);
+    bySymbol.set(r.scope, arr);
+  }
+  return bySymbol;
 }
 
 /**
@@ -133,11 +161,13 @@ export async function buildBrief(): Promise<Brief> {
     isValidSymbol: (s) => validSymbols.has(s),
   });
 
+  // Each dossier leads with the candidate's own per-ticker evidence (its
+  // earnings catalyst, any symbol-scoped items), then the shared market context.
+  const perSymbol = await loadPerSymbolContext(candidates.map((c) => c.symbol));
   const dossiers = candidates.map((c) => {
     const price = indicatorsBySymbol.get(c.symbol)!;
-    // Every candidate reads against the same market context today (observations
-    // are market-scoped). Per-ticker context arrives with single-stock data.
-    return buildDossier(c, price, regime, context, asOf);
+    const ctx: EvidenceLine[] = [...(perSymbol.get(c.symbol) ?? []), ...context].slice(0, DOSSIER_CONTEXT_LIMIT);
+    return buildDossier(c, price, regime, ctx, asOf);
   });
 
   const portfolio = await constructPortfolio(candidates, indicatorsBySymbol, regime, asOf);
