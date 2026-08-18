@@ -8,6 +8,7 @@ import { AppError, asyncHandler } from '../middleware/error-handler.js';
 import * as authService from '../services/auth.service.js';
 import * as econService from '../services/econ.service.js';
 import * as regimeService from '../services/regime.service.js';
+import { buildBrief } from '../services/brief.service.js';
 import * as schwabService from '../services/schwab.service.js';
 import { buildAuthorizeUrl } from '../services/schwab.parse.js';
 import { exchangeAuthCode } from '../services/schwab.oauth.js';
@@ -152,6 +153,18 @@ router.get('/regime', asyncHandler(async (_req, res) => {
 router.get('/instruments', (_req, res) => {
   res.json(INSTRUMENTS);
 });
+
+// Stage 1 + 2: the rules-only brain. `/brief` is the full packet (ranked
+// candidates, each with its evidence dossier, plus the regime); `/candidates`
+// is just the ranked list for a lighter view. No AI, no orders.
+router.get('/brief', asyncHandler(async (_req, res) => {
+  res.json(await buildBrief());
+}));
+
+router.get('/candidates', asyncHandler(async (_req, res) => {
+  const brief = await buildBrief();
+  res.json({ asOf: brief.asOf, regime: brief.regime, candidates: brief.candidates });
+}));
 
 router.get('/account', asyncHandler(async (_req, res) => {
   res.json(await schwabService.getAccountSnapshot());
