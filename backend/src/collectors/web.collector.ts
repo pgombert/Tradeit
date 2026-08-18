@@ -19,20 +19,58 @@ const INLINE_CONTENT_MIN = 2500;
 const USER_AGENT =
   'Tradeit-Research/1.0 (personal research reader; +https://trade.meadowlark.day)';
 
+/** Minimum gap between any two HTTP requests, so a rapid burst of page fetches
+ * doesn't trip a host's rate limiter. Tuned against podscripts.co, which 429s a
+ * scrape of consecutive episode pages without it. */
+const MIN_FETCH_INTERVAL_MS = 1200;
+/** Retries on a 429/503 before giving up, honouring Retry-After when sent. */
+const MAX_RATE_LIMIT_RETRIES = 3;
+const DEFAULT_BACKOFF_MS = 5_000;
+const MAX_BACKOFF_MS = 30_000;
+
+let lastFetchAt = 0;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export interface WebCollectionResult {
   itemsWritten: number;
   sourcesOk: number;
   sourcesFailed: number;
 }
 
+/**
+ * A single polite fetch: at least MIN_FETCH_INTERVAL_MS since the previous
+ * request, plus a bounded retry on 429/503 that honours Retry-After. The
+ * throttle keeps a scrape under a host's rate limit; the backoff recovers on the
+ * occasions we still trip it (validated against podscripts.co). The interval is
+ * process-global, so it paces feeds and scrapes across the whole run.
+ */
 async function fetchText(url: string): Promise<string> {
-  const res = await fetch(url, {
-    headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,application/xhtml+xml,application/xml,*/*' },
-    redirect: 'follow',
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return res.text();
+  for (let attempt = 0; ; attempt++) {
+    const since = Date.now() - lastFetchAt;
+    if (since < MIN_FETCH_INTERVAL_MS) await sleep(MIN_FETCH_INTERVAL_MS - since);
+    lastFetchAt = Date.now();
+
+    const res = await fetch(url, {
+      headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,application/xhtml+xml,application/xml,*/*' },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if ((res.status === 429 || res.status === 503) && attempt < MAX_RATE_LIMIT_RETRIES) {
+      const retryAfter = Number.parseInt(res.headers.get('retry-after') ?? '', 10);
+      const backoff = Math.min(
+        (Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : DEFAULT_BACKOFF_MS / 1000) * 1000,
+        MAX_BACKOFF_MS,
+      );
+      await sleep(backoff);
+      continue;
+    }
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.text();
+  }
 }
 
 /** The article body for a feed item: use the feed's own HTML when it's the full
