@@ -67,27 +67,6 @@ function fetchAccount(hash: string, accessToken: string): Promise<SchwabAccount>
   return schwabGet<SchwabAccount>(`/accounts/${hash}?fields=positions`, accessToken);
 }
 
-/**
- * A compact, one-line log of the balance fields we choose between, so the money
- * mapping can be verified against the real IRA without dumping the whole payload.
- * Financials here are Pete's own, in his own private logs.
- */
-function logBalances(account: SchwabAccount): void {
-  const b = account.securitiesAccount?.currentBalances ?? {};
-  console.log(
-    '[schwab] balances',
-    JSON.stringify({
-      type: account.securitiesAccount?.type ?? null,
-      liquidationValue: b.liquidationValue ?? null,
-      cashBalance: b.cashBalance ?? null,
-      totalCash: b.totalCash ?? null,
-      cashAvailableForTrading: b.cashAvailableForTrading ?? null,
-      unsettledCash: b.unsettledCash ?? null,
-      buyingPower: b.buyingPower ?? null,
-    }),
-  );
-}
-
 /** The accounts this login exposes, summarized for the picker. */
 export async function listAccounts(): Promise<SchwabAccountOption[]> {
   const accessToken = await getValidAccessToken();
@@ -127,7 +106,6 @@ export async function getAccountSnapshot(): Promise<AccountSnapshot> {
     // An account has already been chosen (or auto-selected) — use it.
     if (stored?.accountHash) {
       const account = await fetchAccount(stored.accountHash, accessToken);
-      logBalances(account);
       return toAccountSnapshot(account, new Date());
     }
 
@@ -140,7 +118,6 @@ export async function getAccountSnapshot(): Promise<AccountSnapshot> {
       const only = firstAccountHash(entries);
       if (only) await saveAccountHash(only);
       const account = await fetchAccount(only ?? '', accessToken);
-      logBalances(account);
       return toAccountSnapshot(account, new Date());
     }
 

@@ -207,19 +207,23 @@ export function Dashboard() {
           <div className="tile-note">Compounds to $200k in 52 weeks</div>
         </div>
         <div className="tile">
-          <div className="tile-label">Equity</div>
+          {/* The full IRA is shown for reference only. The program's capital and
+              drawdown ladder are the $100k sleeve, not this whole account. */}
+          <div className="tile-label">Full IRA</div>
           <div className="tile-value">
             {/* Stays a skeleton until Schwab is connected — never a false $0. */}
             <Value value={account?.connected ? (account.totalValue ?? undefined) : undefined} />
           </div>
           <div className="tile-note">
-            {!account || account.status === 'CONNECTED'
+            {!account
               ? 'Live'
-              : account.status === 'EXPIRED'
-                ? 'Login expired — reconnect below'
-                : account.status === 'ERROR'
-                  ? 'Connection error — see Account'
-                  : 'Schwab not connected yet'}
+              : account.status === 'CONNECTED'
+                ? 'Reference — strategy trades a $100k sleeve'
+                : account.status === 'EXPIRED'
+                  ? 'Login expired — reconnect below'
+                  : account.status === 'ERROR'
+                    ? 'Connection error — see Account'
+                    : 'Schwab not connected yet'}
           </div>
         </div>
       </div>
@@ -248,6 +252,13 @@ export function Dashboard() {
                       : 'Not connected'}
           </p>
         </div>
+
+        {account?.status === 'CONNECTED' && !picker && (
+          <p className="tile-note" style={{ marginTop: 8 }}>
+            Your full IRA. The strategy trades a $100k sleeve of this — the risk limits above
+            apply to that sleeve, not the whole account.
+          </p>
+        )}
 
         {/* Account picker — when Schwab exposes more than one account, or when
             the user asks to switch which account is tracked. */}
