@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma.js';
-import { getValidAccessToken } from '../services/schwab.tokens.js';
+import { getValidAccessToken, SchwabAuthError } from '../services/schwab.tokens.js';
 import {
   averageDollarVolume,
   buildPriceHistoryPath,
@@ -185,7 +185,24 @@ export async function collectSchwabPrices(): Promise<PriceCollectionResult[]> {
   const results: PriceCollectionResult[] = [];
 
   try {
-    const accessToken = await getValidAccessToken();
+    let accessToken: string;
+    try {
+      accessToken = await getValidAccessToken();
+    } catch (authError) {
+      if (authError instanceof SchwabAuthError) {
+        // Not connected yet (or the weekly login lapsed) is an expected state,
+        // not an outage — record it and return without throwing, so a full
+        // collect run finishes the other collectors instead of aborting here.
+        console.warn(`[prices] skipped — ${authError.message}`);
+        await prisma.collectorRun.update({
+          where: { id: run.id },
+          data: { status: 'FAILED', finishedAt: new Date(), error: authError.message },
+        });
+        return results;
+      }
+      throw authError;
+    }
+
     const securities = await ensureSecurities();
     const now = new Date();
 

@@ -13,14 +13,16 @@ import { collectSchwabPrices } from '../collectors/schwab.prices.collector.js';
 import { collectWeb } from '../collectors/web.collector.js';
 import { prisma } from '../lib/prisma.js';
 
-// Order matters for a full run: `derived` reads what `fred` just wrote.
+// Order matters for a full run: `derived` reads what `fred` just wrote. `prices`
+// runs last and is independent — until Schwab is connected it skips gracefully,
+// so it never blocks the collectors ahead of it.
 const COLLECTORS: Record<string, () => Promise<unknown>> = {
   fred: collectFred,
   earnings: collectEarnings,
   gmail: collectGmail,
   web: collectWeb,
-  prices: collectSchwabPrices,
   derived: collectDerived,
+  prices: collectSchwabPrices,
 };
 
 async function main(): Promise<void> {
