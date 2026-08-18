@@ -94,6 +94,16 @@ export const WEB_SOURCES: readonly WebSourceDef[] = [
     linkMatch: '/notes-on-the-week-ahead/',
     homepage: 'https://am.jpmorgan.com',
   },
+
+  // --- Podcast transcripts — SCRAPE via podscripts.co -------------------
+  // podscripts.co is server-rendered: each show's /podcasts/<slug>/ page lists
+  // episodes, each episode page is a full verbatim transcript. Personal use,
+  // nothing redistributed. Episode pages carry no clean air-date, so these are
+  // stamped with ingestion time. linkMatch keeps us to the one show's episodes.
+  { key: 'podscript-odd-lots', name: 'Odd Lots (transcript)', author: 'Joe Weisenthal & Tracy Alloway · Bloomberg', stage: 'REGIME', tier: 1, channel: 'SCRAPE', listUrl: 'https://podscripts.co/podcasts/odd-lots/', linkMatch: '/podcasts/odd-lots/', homepage: 'https://podscripts.co/podcasts/odd-lots' },
+  { key: 'podscript-invest-like-the-best', name: 'Invest Like the Best (transcript)', author: "Patrick O'Shaughnessy", stage: 'FACTOR', tier: 1, channel: 'SCRAPE', listUrl: 'https://podscripts.co/podcasts/invest-like-the-best-with-patrick-oshaughnessy/', linkMatch: '/podcasts/invest-like-the-best-with-patrick-oshaughnessy/', homepage: 'https://podscripts.co/podcasts/invest-like-the-best-with-patrick-oshaughnessy' },
+  { key: 'podscript-compound-and-friends', name: 'The Compound and Friends (transcript)', author: 'Josh Brown & Michael Batnick', stage: 'REGIME', tier: 1, channel: 'SCRAPE', listUrl: 'https://podscripts.co/podcasts/the-compound-and-friends/', linkMatch: '/podcasts/the-compound-and-friends/', homepage: 'https://podscripts.co/podcasts/the-compound-and-friends' },
+  { key: 'podscript-animal-spirits', name: 'Animal Spirits (transcript)', author: 'Ben Carlson & Michael Batnick', stage: 'REGIME', tier: 1, channel: 'SCRAPE', listUrl: 'https://podscripts.co/podcasts/animal-spirits-podcast/', linkMatch: '/podcasts/animal-spirits-podcast/', homepage: 'https://podscripts.co/podcasts/animal-spirits-podcast' },
 ] as const;
 
 export function webSourcesByChannel(channel: WebChannel): WebSourceDef[] {
