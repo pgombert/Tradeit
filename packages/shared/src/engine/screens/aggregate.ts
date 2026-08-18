@@ -16,6 +16,12 @@ import type { ScreenFinding } from './types.js';
 export interface AggregateOptions {
   /** Cap on the returned list. Default 40 (the plan's Stage 1 upper bound). */
   maxCandidates?: number;
+  /**
+   * The validation anchor (CLAUDE.md rule 1). A symbol that fails this is
+   * dropped. Defaults to "resolves to a known instrument"; the service passes a
+   * predicate over the real `securities` table so single stocks validate too.
+   */
+  isValidSymbol?: (symbol: string) => boolean;
 }
 
 /** The strongest single screen score behind a candidate — the ranking tiebreak. */
@@ -49,10 +55,11 @@ export function aggregateCandidates(
   asOf: string,
   opts: AggregateOptions = {},
 ): Candidate[] {
+  const isValidSymbol = opts.isValidSymbol ?? ((s: string) => Boolean(instrumentBySymbol(s)));
   const bySymbol = new Map<string, ScreenFinding[]>();
   for (const f of findings) {
-    // Validation anchor: only symbols that resolve to a known instrument survive.
-    if (!instrumentBySymbol(f.symbol)) continue;
+    // Validation anchor: only symbols that resolve to real data survive.
+    if (!isValidSymbol(f.symbol)) continue;
     const arr = bySymbol.get(f.symbol) ?? [];
     arr.push(f);
     bySymbol.set(f.symbol, arr);

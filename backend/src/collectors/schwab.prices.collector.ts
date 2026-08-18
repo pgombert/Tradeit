@@ -24,6 +24,14 @@ import {
 
 const UPSERT_CHUNK = 500;
 
+/** Pause between symbol fetches so a ~140-symbol run stays under Schwab's
+ * market-data rate limit (~120 requests/minute). */
+const FETCH_INTERVAL_MS = 550;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export interface PriceCollectionResult {
   symbol: string;
   barsWritten: number;
@@ -206,7 +214,10 @@ export async function collectSchwabPrices(): Promise<PriceCollectionResult[]> {
     const securities = await ensureSecurities();
     const now = new Date();
 
+    let first = true;
     for (const [symbol, securityId] of securities) {
+      if (!first) await sleep(FETCH_INTERVAL_MS); // throttle to respect the rate limit
+      first = false;
       const result = await collectOne(symbol, securityId, accessToken, now);
       results.push(result);
       console.log(

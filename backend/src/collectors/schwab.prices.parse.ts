@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { INSTRUMENTS, type AssetClass } from '@tradeit/shared';
+import { INSTRUMENTS, STOCK_UNIVERSE, type AssetClass } from '@tradeit/shared';
 
 /**
  * Pure helpers for the Schwab price-history collector — no network, no database,
@@ -61,13 +61,24 @@ export interface SecuritySeed {
 }
 
 export function securitySeeds(): SecuritySeed[] {
-  return INSTRUMENTS.map((i) => ({
-    symbol: i.symbol,
-    name: i.name,
-    assetClass: i.class,
-    leverageFactor: i.leverageFactor,
-    isInverse: i.isInverse,
-  }));
+  return [
+    // The ETF instrument universe (index, sectors, rates/credit/commodity, inverse, leveraged).
+    ...INSTRUMENTS.map((i) => ({
+      symbol: i.symbol,
+      name: i.name,
+      assetClass: i.class,
+      leverageFactor: i.leverageFactor,
+      isInverse: i.isInverse,
+    })),
+    // The single-stock screening universe — liquid large caps, all plain EQUITY.
+    ...STOCK_UNIVERSE.map((s) => ({
+      symbol: s.symbol,
+      name: s.name,
+      assetClass: 'EQUITY' as AssetClass,
+      leverageFactor: 1,
+      isInverse: false,
+    })),
+  ];
 }
 
 /** The date portion of a candle, as UTC midnight — PriceBar.date is date-only. */

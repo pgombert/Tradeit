@@ -6,6 +6,7 @@
  */
 import {
   hasInverseFor,
+  instrumentBySymbol,
   isSectorExposure,
   screenableInstruments,
   type Bar,
@@ -72,14 +73,16 @@ async function loadContext(): Promise<ReturnType<typeof observationToEvidence>[]
  * context that bears on it). Returns the whole packet for the API / Stage 3.
  */
 export async function buildBrief(): Promise<Brief> {
-  const universe = screenableInstruments();
-  const symbols = universe.map((i) => i.symbol);
-
+  // The screenable universe: the base long ETFs (index, sectors, rates/credit/
+  // commodity — not inverse or leveraged, which are Stage 5 expression vehicles)
+  // plus every single stock. Loaded from the securities table so the validation
+  // anchor is the real rows, and a stock with no price data yet drops out.
+  const baseEtfSymbols = screenableInstruments().map((i) => i.symbol);
   const securityRows = await prisma.security.findMany({
-    where: { symbol: { in: symbols } },
+    where: { OR: [{ symbol: { in: baseEtfSymbols } }, { class: 'EQUITY' }] },
     select: { id: true, symbol: true },
   });
-  const idBySymbol = new Map(securityRows.map((s) => [s.symbol, s.id]));
+  const validSymbols = new Set(securityRows.map((s) => s.symbol));
 
   const [regimeVerdict, context] = await Promise.all([getRegime(), loadContext()]);
   const regime: DossierRegime = {
@@ -91,16 +94,28 @@ export async function buildBrief(): Promise<Brief> {
 
   const securities: SecurityBars[] = (
     await Promise.all(
-      universe.map(async (inst): Promise<SecurityBars | null> => {
-        const id = idBySymbol.get(inst.symbol);
-        if (!id) return null; // security not seeded / no price data yet
-        const bars = await loadBars(id);
-        if (bars.length === 0) return null;
+      securityRows.map(async (row): Promise<SecurityBars | null> => {
+        const bars = await loadBars(row.id);
+        if (bars.length === 0) return null; // no price history yet
+        const inst = instrumentBySymbol(row.symbol);
+        if (inst) {
+          return {
+            symbol: row.symbol,
+            exposure: inst.exposure,
+            isSector: isSectorExposure(inst.exposure),
+            hasInverse: hasInverseFor(inst.exposure),
+            isLeveraged: false,
+            bars,
+          };
+        }
+        // A single stock is its own exposure: not a sector ETF, and — no
+        // single-stock inverse exists — a bearish view is not expressible, so
+        // the screens only ever surface it long.
         return {
-          symbol: inst.symbol,
-          exposure: inst.exposure,
-          isSector: isSectorExposure(inst.exposure),
-          hasInverse: hasInverseFor(inst.exposure),
+          symbol: row.symbol,
+          exposure: row.symbol,
+          isSector: false,
+          hasInverse: false,
           isLeveraged: false,
           bars,
         };
@@ -108,10 +123,12 @@ export async function buildBrief(): Promise<Brief> {
     )
   ).filter((s): s is SecurityBars => s !== null);
 
-  const benchmarkId = idBySymbol.get(BENCHMARK);
+  const benchmarkId = securityRows.find((r) => r.symbol === BENCHMARK)?.id;
   const benchmarkBars = benchmarkId ? await loadBars(benchmarkId) : [];
 
-  const { candidates, indicatorsBySymbol, asOf } = runStage1(securities, benchmarkBars, regime);
+  const { candidates, indicatorsBySymbol, asOf } = runStage1(securities, benchmarkBars, regime, {
+    isValidSymbol: (s) => validSymbols.has(s),
+  });
 
   const dossiers = candidates.map((c) => {
     const price = indicatorsBySymbol.get(c.symbol)!;

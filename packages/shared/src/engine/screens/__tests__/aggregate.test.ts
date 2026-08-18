@@ -71,6 +71,23 @@ describe('aggregateCandidates', () => {
     expect(out[1]?.conviction).toBe(1);
   });
 
+  it('accepts a non-instrument symbol when a custom validator allows it (single stocks)', () => {
+    // AAPL isn't in the ETF INSTRUMENTS table, but a stock in the securities
+    // table is valid — the service passes a predicate that knows about it.
+    const out = aggregateCandidates([finding('AAPL', 'TECH', 'BULLISH', 'momentum', 0.8)], asOf, {
+      isValidSymbol: (s) => s === 'AAPL',
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0]?.symbol).toBe('AAPL');
+  });
+
+  it('still drops an unknown symbol under a custom validator', () => {
+    const out = aggregateCandidates([finding('AAPL', 'TECH', 'BULLISH', 'momentum', 0.8)], asOf, {
+      isValidSymbol: (s) => s === 'MSFT',
+    });
+    expect(out).toEqual([]);
+  });
+
   it('honours the maxCandidates cap', () => {
     const out = aggregateCandidates(
       [
