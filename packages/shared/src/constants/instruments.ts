@@ -80,3 +80,28 @@ export function instrumentBySymbol(symbol: string): InstrumentDef | undefined {
 export function instrumentsForExposure(exposure: string): InstrumentDef[] {
   return INSTRUMENTS.filter((i) => i.exposure === exposure);
 }
+
+/** The GICS-sector exposures (as opposed to index, rates, credit, commodity). */
+export const SECTOR_EXPOSURES: readonly string[] = [
+  'TECH', 'FINANCIALS', 'ENERGY', 'HEALTHCARE', 'INDUSTRIALS',
+  'DISCRETIONARY', 'STAPLES', 'UTILITIES', 'SEMIS', 'BIOTECH',
+];
+
+export function isSectorExposure(exposure: string): boolean {
+  return SECTOR_EXPOSURES.includes(exposure);
+}
+
+/** True when a tradable inverse product exists for this exposure — the account
+ * can't short, so a bearish view is only expressible where this holds. */
+export function hasInverseFor(exposure: string): boolean {
+  return INSTRUMENTS.some((i) => i.exposure === exposure && i.isInverse);
+}
+
+/**
+ * The securities Stage 1 actually screens: the base long, unleveraged ETFs.
+ * Inverse and leveraged products are *expression vehicles* chosen at Stage 5
+ * from a candidate's direction — never screened directly.
+ */
+export function screenableInstruments(): InstrumentDef[] {
+  return INSTRUMENTS.filter((i) => i.leverageFactor === 1 && !i.isInverse);
+}
