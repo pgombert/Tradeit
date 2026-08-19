@@ -10,6 +10,7 @@ import * as econService from '../services/econ.service.js';
 import * as regimeService from '../services/regime.service.js';
 import { buildBrief } from '../services/brief.service.js';
 import { getLatestBrief } from '../services/brief-generate.service.js';
+import { computeAttribution } from '../services/attribution.service.js';
 import * as schwabService from '../services/schwab.service.js';
 import { buildAuthorizeUrl } from '../services/schwab.parse.js';
 import { exchangeAuthCode } from '../services/schwab.oauth.js';
@@ -182,6 +183,12 @@ router.get('/brief', asyncHandler(async (_req, res) => {
 // no AI, always current with the latest prices.
 router.get('/brief/live', asyncHandler(async (_req, res) => {
   res.json(await buildBrief());
+}));
+
+// The self-learning scorecard: how the system's own past picks have performed,
+// graded against subsequent price action (Stage 7). Sparse until briefs age.
+router.get('/attribution', asyncHandler(async (_req, res) => {
+  res.json(await computeAttribution());
 }));
 
 router.get('/candidates', asyncHandler(async (_req, res) => {

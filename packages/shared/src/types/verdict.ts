@@ -39,6 +39,29 @@ export interface AnalysedCandidate {
   survived: boolean;
 }
 
+/** How one grouping (a screen, a source) of past picks performed — Stage 7. */
+export interface AttributionRow {
+  key: string;
+  picks: number;
+  hitRate: number | null;
+  avgReturn: number | null;
+}
+
+/**
+ * The self-learning signal: how the system's own past picks actually did,
+ * graded against subsequent price action. Starts sparse and sharpens as the
+ * track record accumulates. Reweighting toward what works comes later.
+ */
+export interface AttributionSummary {
+  gradedBriefs: number;
+  picks: number;
+  hitRate: number | null;
+  avgReturn: number | null;
+  /** Which screens/signals surfaced the winners. */
+  byScreen: AttributionRow[];
+  asOf: string;
+}
+
 /** A ticker the news/podcast feed surfaced with bullish momentum (Stage 1 discovery). */
 export interface NarrativeIdea {
   symbol: string;

@@ -1,6 +1,7 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import type {
   AccountSnapshot,
+  AttributionSummary,
   AuthTokens,
   EconSeriesDetail,
   EconSeriesSummary,
@@ -144,6 +145,8 @@ export const dataApi = {
 export const briefApi = {
   /** The latest stored weekly brief (candidates, AI verdicts, sized portfolio). */
   latest: () => api.get<StoredBrief>('/brief').then((r) => r.data),
+  /** The self-learning scorecard: how past picks have performed so far. */
+  attribution: () => api.get<AttributionSummary>('/attribution').then((r) => r.data),
 };
 
 export const schwabApi = {

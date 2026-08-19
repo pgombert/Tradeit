@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type {
   AnalysedCandidate,
+  AttributionSummary,
   Candidate,
   DossierRegime,
   SizedPosition,
@@ -166,6 +167,7 @@ function VerdictCard({ item }: { item: AnalysedCandidate }) {
 export function Brief() {
   const { user, signOut } = useAuth();
   const [brief, setBrief] = useState<StoredBrief>();
+  const [track, setTrack] = useState<AttributionSummary>();
   const [error, setError] = useState<string>();
 
   useEffect(() => {
@@ -178,6 +180,14 @@ export function Brief() {
       .catch(() => {
         if (!cancelled)
           setError("Couldn't load this week's brief. It may not have been generated yet — try again shortly.");
+      });
+    briefApi
+      .attribution()
+      .then((t) => {
+        if (!cancelled) setTrack(t);
+      })
+      .catch(() => {
+        /* Track record is supplementary — a failure here shouldn't blank the brief. */
       });
     return () => {
       cancelled = true;
@@ -392,6 +402,70 @@ export function Brief() {
           </div>
         </>
       )}
+
+      {/* ---- Track record (the self-learning scorecard) ---- */}
+      <p className="section-label">Track record</p>
+      <div className="panel">
+        <p className="tile-note" style={{ marginTop: 0 }}>
+          How the system's own past picks have done since it named them — graded against
+          the latest prices. This sharpens as more briefs age; a pick made today hasn't
+          moved yet.
+        </p>
+        {track && track.picks > 0 ? (
+          <>
+            <div className="tiles" style={{ marginBottom: 16 }}>
+              <div className="tile">
+                <div className="tile-label">Picks graded</div>
+                <Value value={String(track.picks)} className="tile-value" />
+                <p className="tile-note">across {track.gradedBriefs} briefs</p>
+              </div>
+              <div className="tile">
+                <div className="tile-label">Hit rate</div>
+                <Value value={track.hitRate == null ? undefined : pct(track.hitRate)} className="tile-value" />
+                <p className="tile-note">share of picks now in the green</p>
+              </div>
+              <div className="tile">
+                <div className="tile-label">Avg. move</div>
+                <Value
+                  value={track.avgReturn == null ? undefined : pct(track.avgReturn, 1)}
+                  className={`tile-value ${(track.avgReturn ?? 0) >= 0 ? 'pos' : 'neg'}`}
+                />
+                <p className="tile-note">mean return since each entry</p>
+              </div>
+            </div>
+            {track.byScreen.length > 0 && (
+              <div className="tbl-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Signal</th>
+                      <th>Picks</th>
+                      <th>Hit rate</th>
+                      <th>Avg. move</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {track.byScreen.map((row) => (
+                      <tr key={row.key}>
+                        <td>{row.key}</td>
+                        <td>{row.picks}</td>
+                        <td>{row.hitRate == null ? '—' : pct(row.hitRate)}</td>
+                        <td className={(row.avgReturn ?? 0) >= 0 ? 'pos' : 'neg'}>
+                          {row.avgReturn == null ? '—' : pct(row.avgReturn, 1)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="empty">
+            No graded picks yet — the scorecard fills in as this week's book ages.
+          </div>
+        )}
+      </div>
 
       {/* ---- 3. All candidates ---- */}
       <p className="section-label">All candidates</p>
