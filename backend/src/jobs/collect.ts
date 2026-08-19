@@ -12,6 +12,7 @@ import { collectGmail } from '../collectors/gmail.collector.js';
 import { collectSchwabPrices } from '../collectors/schwab.prices.collector.js';
 import { collectWeb } from '../collectors/web.collector.js';
 import { generateBrief } from '../services/brief-generate.service.js';
+import { runDiagnostics } from '../services/diag.service.js';
 import { prisma } from '../lib/prisma.js';
 
 // Order matters for a full run: `derived` reads what `fred` just wrote. `prices`
@@ -28,10 +29,14 @@ const COLLECTORS: Record<string, () => Promise<unknown>> = {
   // collectors wrote, is slow and paid, and is EXCLUDED from the default run —
   // trigger it explicitly (`collect -- brief`) or on its own weekly schedule.
   brief: generateBrief,
+  // `diag` is a read-only inventory of the research feed — never writes; used to
+  // see whether transcripts are present, recent, and carry real text.
+  diag: runDiagnostics,
 };
 
-/** The default full run — every collector, but not the paid `brief` step. */
-const DEFAULT_STEPS = Object.keys(COLLECTORS).filter((n) => n !== 'brief');
+/** The default full run — every collector, but not the paid `brief` or the
+ * on-demand read-only `diag` step. */
+const DEFAULT_STEPS = Object.keys(COLLECTORS).filter((n) => n !== 'brief' && n !== 'diag');
 
 async function main(): Promise<void> {
   const requested = process.argv.slice(2).filter((a) => !a.startsWith('-'));
