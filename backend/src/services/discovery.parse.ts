@@ -39,18 +39,22 @@ export interface PromptPair {
 const PER_ITEM_CHARS = 40_000;
 
 export function buildDiscoveryPrompt(items: ResearchItem[]): PromptPair {
+  // Items are numbered [1]..[N]; the model cites the number, not a fragile UUID.
   const body = items
-    .map((it) => `[${it.id}] (${it.source}) ${it.title}\n${it.text.slice(0, PER_ITEM_CHARS)}`)
+    .map((it, i) => `[${i + 1}] (${it.source}) ${it.title}\n${it.text.slice(0, PER_ITEM_CHARS)}`)
     .join('\n\n---\n\n');
   return {
     system:
-      'You surface trade ideas from research. Read the items below and name the individual US-listed ' +
-      'STOCKS (tickers) being discussed with genuine bullish momentum, a specific near-term catalyst, or ' +
-      'clearly positive conviction. Ignore names mentioned only in passing, bearishly, or as macro/context. ' +
-      'Do NOT invent tickers. For each, cite the [id] of the item it came from.\n' +
+      'You surface single-stock trade ideas from research — newsletters and podcast transcripts. Read the items ' +
+      'and name the individual US-listed STOCKS (tickers) the writers/hosts discuss with genuine bullish interest: ' +
+      'real momentum, a specific catalyst, or clear positive conviction. Ignore names mentioned only in passing, ' +
+      'bearishly, or purely as macro/economic context, and ignore index ETFs. Surface every name that has a real ' +
+      'bullish case in the text — a lively podcast can yield several. Do NOT invent tickers or cases not in the text.\n' +
+      'For each idea, cite the item NUMBER it came from (the [N] label).\n' +
       'Return ONLY a JSON object, no prose: { "tickers": [ ... ] }, where each element has exactly ' +
-      'symbol (the ticker, uppercase), reason (one line on why), evidenceId (the [id] string), ' +
-      'confidence (integer 1-5). Use an empty array if nothing qualifies.',
+      'symbol (uppercase ticker), reason (one line — quote or paraphrase the actual bullish point made), ' +
+      'evidenceId (the item number as a string, e.g. "3"), confidence (integer 1-5). ' +
+      'Use an empty array ONLY if the text genuinely discusses no stock bullishly.',
     user: `RESEARCH ITEMS:\n\n${body}`,
   };
 }
@@ -64,7 +68,7 @@ function isSymbol(s: unknown): s is string {
  * evidence id, with confidence in range; symbols are upper-cased and de-duped
  * (highest confidence wins). Liquidity/resolution is enforced later by the service.
  */
-export function validateDiscovered(raw: unknown, validEvidenceIds: Set<string>): DiscoveredTicker[] {
+export function validateDiscovered(raw: unknown, validRefs: Set<string>): DiscoveredTicker[] {
   // Accept either a bare array or the { tickers: [...] } wrapper.
   const list = Array.isArray(raw)
     ? raw
@@ -83,8 +87,11 @@ export function validateDiscovered(raw: unknown, validEvidenceIds: Set<string>):
     if (typeof confidence !== 'number' || !Number.isInteger(confidence) || confidence < 1 || confidence > 5) {
       continue;
     }
-    const evidenceId = typeof e.evidenceId === 'string' ? e.evidenceId : '';
-    if (!validEvidenceIds.has(evidenceId)) continue; // cited a source we don't hold → drop
+    // The model cites an item number; tolerate "3", 3, or "[3]".
+    const rawId = e.evidenceId;
+    const evidenceId =
+      typeof rawId === 'number' ? String(rawId) : typeof rawId === 'string' ? rawId.replace(/[^\d]/g, '') : '';
+    if (!validRefs.has(evidenceId)) continue; // cited an item we don't hold → drop
     const reason = typeof e.reason === 'string' ? e.reason.trim() : '';
     if (!reason) continue;
 

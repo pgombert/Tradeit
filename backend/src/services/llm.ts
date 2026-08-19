@@ -23,6 +23,10 @@ import {
 
 const MODEL = 'claude-opus-5';
 const MAX_TOKENS = 6000;
+/** Discovery scans a large batch of transcripts and can emit a long ticker list,
+ * so it needs far more room than a single-candidate verdict — with a small budget
+ * the model exhausts it while thinking and returns no answer at all. */
+const DISCOVERY_MAX_TOKENS = 20_000;
 
 let client: Anthropic | null = null;
 function anthropic(): Anthropic {
@@ -45,16 +49,21 @@ function extractJson(text: string): unknown {
   }
 }
 
-async function callJson(system: string, user: string): Promise<unknown> {
+async function callJson(system: string, user: string, maxTokens = MAX_TOKENS): Promise<unknown> {
   const res = await anthropic().messages.create({
     model: MODEL,
-    max_tokens: MAX_TOKENS,
+    max_tokens: maxTokens,
     output_config: { effort: 'medium' },
     system,
     messages: [{ role: 'user', content: user }],
   });
   const textBlock = res.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
-  return textBlock ? extractJson(textBlock.text) : null;
+  if (!textBlock) {
+    // No text block usually means the token budget was spent while thinking.
+    console.warn(`[llm] no text block returned (stop_reason=${res.stop_reason})`);
+    return null;
+  }
+  return extractJson(textBlock.text);
 }
 
 /** Stage 3 — the analyst forms a view; the gate validates it or discards it. */
@@ -81,14 +90,18 @@ export async function redTeamPass(verdict: AnalystVerdict, dossier: Dossier): Pr
 
 /** News-driven discovery — the model names tickers being discussed with real
  * momentum/catalyst; the gate keeps only well-formed, source-cited ones. */
-export async function discoverTickers(
-  items: ResearchItem[],
-  validEvidenceIds: Set<string>,
-): Promise<DiscoveredTicker[]> {
+export async function discoverTickers(items: ResearchItem[]): Promise<DiscoveredTicker[]> {
   if (items.length === 0) return [];
   const { system, user } = buildDiscoveryPrompt(items);
+  const validRefs = new Set(items.map((_, i) => String(i + 1))); // items are cited by number
   try {
-    return validateDiscovered(await callJson(system, user), validEvidenceIds);
+    const raw = await callJson(system, user, DISCOVERY_MAX_TOKENS);
+    const out = validateDiscovered(raw, validRefs);
+    if (out.length === 0) {
+      // Surface why nothing survived — an empty model reply vs. everything filtered.
+      console.warn(`[discovery] no tickers after validation; raw=${JSON.stringify(raw)?.slice(0, 500)}`);
+    }
+    return out;
   } catch (err) {
     console.warn(`[discovery] failed: ${err instanceof Error ? err.message : String(err)}`);
     return [];

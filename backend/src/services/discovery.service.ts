@@ -79,9 +79,12 @@ export async function discover(): Promise<DiscoveredTicker[]> {
   const chars = items.reduce((s, i) => s + i.text.length, 0);
   console.log(`[discovery] reading ${items.length} research items (${Math.round(chars / 1000)}k chars) from ${new Set(items.map((i) => i.source)).size} sources`);
   if (items.length === 0) return [];
-  const validEvidenceIds = new Set(items.map((i) => i.id));
-  const sourceById = new Map(items.map((i) => [i.id, i.source]));
-  const discovered = await discoverTickers(items, validEvidenceIds);
+  const discovered = await discoverTickers(items);
   console.log(`[discovery] surfaced ${discovered.length} tickers: ${discovered.map((d) => d.symbol).join(', ') || '(none)'}`);
-  return discovered.map((d) => ({ ...d, source: sourceById.get(d.evidenceId) ?? 'research' }));
+  // The model cited each idea by item number; translate that back to the real
+  // observation id (the audit trail) and the human-readable source name.
+  return discovered.map((d) => {
+    const item = items[Number(d.evidenceId) - 1];
+    return { ...d, evidenceId: item?.id ?? d.evidenceId, source: item?.source ?? 'research' };
+  });
 }
