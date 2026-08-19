@@ -24,6 +24,10 @@ import { constructPortfolio } from './portfolio.service.js';
 
 /** ~1 trading year — enough for the 200-day average and 6-month returns. */
 const BARS_LOOKBACK = 260;
+/** Hard liquidity floor: a name must trade well above this in average daily
+ * dollar volume so a $100k position goes in and out in seconds without moving
+ * the price — the exit speed the momentum strategy depends on. */
+const LIQUIDITY_FLOOR = 20_000_000;
 /** How far back market-context observations are pulled for the dossier. */
 const CONTEXT_DAYS = 21;
 const CONTEXT_LIMIT = 60;
@@ -111,7 +115,7 @@ export async function buildBrief(): Promise<Brief> {
   const baseEtfSymbols = screenableInstruments().map((i) => i.symbol);
   const securityRows = await prisma.security.findMany({
     where: { OR: [{ symbol: { in: baseEtfSymbols } }, { class: 'EQUITY' }] },
-    select: { id: true, symbol: true },
+    select: { id: true, symbol: true, avgDollarVolume: true },
   });
   const validSymbols = new Set(securityRows.map((s) => s.symbol));
 
@@ -129,6 +133,13 @@ export async function buildBrief(): Promise<Brief> {
         const bars = await loadBars(row.id);
         if (bars.length === 0) return null; // no price history yet
         const inst = instrumentBySymbol(row.symbol);
+        // Liquidity gate for single stocks: a name we can't exit fast has no
+        // place in a cut-losers-fast momentum book. (ETFs in the base set are all
+        // deeply liquid.) A stock with no computed ADV yet is excluded until it has one.
+        if (!inst) {
+          const adv = row.avgDollarVolume === null ? 0 : Number(row.avgDollarVolume);
+          if (adv < LIQUIDITY_FLOOR) return null;
+        }
         if (inst) {
           return {
             symbol: row.symbol,
