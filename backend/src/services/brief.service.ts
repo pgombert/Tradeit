@@ -170,6 +170,10 @@ export async function buildBrief(): Promise<Brief> {
 
   const { candidates, indicatorsBySymbol, asOf } = runStage1(securities, benchmarkBars, regime, {
     isValidSymbol: (s) => validSymbols.has(s),
+    // Single stocks only in the book: an ETF resolves to a base instrument, a
+    // stock doesn't. ETFs are still screened above (market context, relative
+    // strength) but never become candidates — this is a single-stock momentum hunt.
+    candidateFilter: (s) => !instrumentBySymbol(s),
   });
 
   // Each dossier leads with the candidate's own per-ticker evidence (its

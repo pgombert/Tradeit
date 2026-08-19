@@ -23,8 +23,12 @@ import { discover } from './discovery.service.js';
 import { analystPass, llmConfigured, redTeamPass } from './llm.js';
 import { constructPortfolio } from './portfolio.service.js';
 
-/** How many top candidates run through the (paid, slower) AI stages. */
-const ANALYSIS_LIMIT = 10;
+/**
+ * How many top candidates run through the (paid, slower) AI stages. Widened from
+ * 10 so the sharper breakout names actually get analysed rather than being
+ * squeezed out below the steadiest large-caps before the model ever reads them.
+ */
+const ANALYSIS_LIMIT = 20;
 
 function validAsOf(asOf: string): Date {
   const d = new Date(`${asOf}T00:00:00Z`);

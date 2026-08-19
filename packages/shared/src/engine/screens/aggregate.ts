@@ -22,6 +22,14 @@ export interface AggregateOptions {
    * predicate over the real `securities` table so single stocks validate too.
    */
   isValidSymbol?: (symbol: string) => boolean;
+  /**
+   * Which symbols are eligible to *become* candidates. A symbol that fails this
+   * is still screened (so it can inform relative strength and corroborate others)
+   * but never enters the book. The service passes "single stocks only" here so
+   * index/sector ETFs stay as market context and don't crowd out the stock names
+   * this momentum system is built to trade.
+   */
+  candidateFilter?: (symbol: string) => boolean;
 }
 
 /** The strongest single screen score behind a candidate — the ranking tiebreak. */
@@ -39,6 +47,11 @@ function convictionFor(hits: ScreenHit[]): Conviction {
   const avg = hits.reduce((s, h) => s + h.score, 0) / n;
   let c = n >= 3 ? 4 : n === 2 ? 3 : 2;
   if (avg >= 0.66) c += 1;
+  // A single screen firing at the very top of its range is a strong signal on its
+  // own — a fresh breakout in a nimble name that hasn't yet built the months-long
+  // trend other screens need. Let it reach high conviction rather than capping it
+  // below the established mega-caps just because only one screen saw it.
+  if (avg >= 0.85) c += 1;
   if (n === 1 && avg < 0.2) c = 1;
   const clamped = Math.max(1, Math.min(5, c));
   return clamped as Conviction;
@@ -56,10 +69,13 @@ export function aggregateCandidates(
   opts: AggregateOptions = {},
 ): Candidate[] {
   const isValidSymbol = opts.isValidSymbol ?? ((s: string) => Boolean(instrumentBySymbol(s)));
+  const isCandidate = opts.candidateFilter ?? (() => true);
   const bySymbol = new Map<string, ScreenFinding[]>();
   for (const f of findings) {
     // Validation anchor: only symbols that resolve to real data survive.
     if (!isValidSymbol(f.symbol)) continue;
+    // Eligibility: screened for context, but only candidates enter the book.
+    if (!isCandidate(f.symbol)) continue;
     const arr = bySymbol.get(f.symbol) ?? [];
     arr.push(f);
     bySymbol.set(f.symbol, arr);

@@ -88,6 +88,35 @@ describe('aggregateCandidates', () => {
     expect(out).toEqual([]);
   });
 
+  it('lets a lone top-of-range signal reach high conviction (fresh breakout)', () => {
+    // A single breakout firing near 1.0: n=1 → 2, +1 (avg ≥ .66), +1 (avg ≥ .85) = 4.
+    const out = aggregateCandidates([finding('AAPL', 'AAPL', 'BULLISH', 'breakout', 0.95)], asOf, {
+      isValidSymbol: () => true,
+    });
+    expect(out[0]?.conviction).toBe(4);
+  });
+
+  it('a lone mid-strength signal stays modest (no runaway conviction)', () => {
+    // score 0.5: n=1 → 2, avg < .66 → no bumps.
+    const out = aggregateCandidates([finding('AAPL', 'AAPL', 'BULLISH', 'breakout', 0.5)], asOf, {
+      isValidSymbol: () => true,
+    });
+    expect(out[0]?.conviction).toBe(2);
+  });
+
+  it('screens a symbol for context but keeps it out of the book when candidateFilter rejects it', () => {
+    // ETF (SPY) and stock (AAPL) both surface; only the stock is a candidate.
+    const out = aggregateCandidates(
+      [
+        finding('SPY', 'SP500', 'BULLISH', 'momentum', 0.9),
+        finding('AAPL', 'AAPL', 'BULLISH', 'breakout', 0.9),
+      ],
+      asOf,
+      { isValidSymbol: () => true, candidateFilter: (s) => s === 'AAPL' },
+    );
+    expect(out.map((c) => c.symbol)).toEqual(['AAPL']);
+  });
+
   it('honours the maxCandidates cap', () => {
     const out = aggregateCandidates(
       [
