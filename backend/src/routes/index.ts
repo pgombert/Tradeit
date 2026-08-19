@@ -173,6 +173,7 @@ router.get('/brief', asyncHandler(async (_req, res) => {
     candidates: live.candidates,
     analysed: [],
     portfolio: live.portfolio,
+    narrativeIdeas: [],
     aiRan: false,
   });
 }));

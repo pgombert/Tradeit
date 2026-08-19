@@ -9,9 +9,17 @@
  * The AI supplies judgement; the numbers (prices, stops, sizes) stay ours.
  */
 import { Prisma } from '@prisma/client';
-import type { AnalysedCandidate, Candidate, Indicators, StoredBrief } from '@tradeit/shared';
+import type {
+  AnalysedCandidate,
+  Candidate,
+  Conviction,
+  Indicators,
+  NarrativeIdea,
+  StoredBrief,
+} from '@tradeit/shared';
 import { prisma } from '../lib/prisma.js';
 import { buildBrief } from './brief.service.js';
+import { discover } from './discovery.service.js';
 import { analystPass, llmConfigured, redTeamPass } from './llm.js';
 import { constructPortfolio } from './portfolio.service.js';
 
@@ -52,6 +60,7 @@ export async function generateBrief(): Promise<StoredBrief> {
       candidates: brief.candidates,
       analysed: [],
       portfolio: brief.portfolio,
+      narrativeIdeas: [],
       aiRan: false,
     };
     await save(stored);
@@ -59,8 +68,39 @@ export async function generateBrief(): Promise<StoredBrief> {
     return stored;
   }
 
+  // Stage 1 discovery: the model reads the research feed and names tickers with
+  // momentum/catalyst. A candidate that momentum AND the narrative both point to
+  // gets a conviction boost and a 'narrative' screen; the rest are surfaced as
+  // ideas. (Names not already in the screened universe show as ideas only for now.)
+  const discovered = await discover();
+  const discoveredBy = new Map(discovered.map((d) => [d.symbol, d]));
+  const candidateSymbols = new Set(brief.candidates.map((c) => c.symbol));
+
+  const candidates: Candidate[] = brief.candidates
+    .map((c) => {
+      const d = discoveredBy.get(c.symbol);
+      if (!d) return c;
+      return {
+        ...c,
+        conviction: Math.min(5, c.conviction + 1) as Conviction,
+        screens: [
+          ...c.screens,
+          { screen: 'narrative', score: d.confidence / 5, direction: c.direction, rationale: d.reason, evidence: [d.evidenceId] },
+        ],
+      };
+    })
+    .sort((a, b) => b.conviction - a.conviction);
+
+  const narrativeIdeas: NarrativeIdea[] = discovered.map((d) => ({
+    symbol: d.symbol,
+    reason: d.reason,
+    confidence: d.confidence,
+    inBook: candidateSymbols.has(d.symbol),
+  }));
+  if (discovered.length) console.log(`[brief] discovery surfaced ${discovered.length} names (${narrativeIdeas.filter((i) => i.inBook).length} already in the book)`);
+
   const dossierBySymbol = new Map(brief.dossiers.map((d) => [d.candidate.symbol, d]));
-  const top = brief.candidates.slice(0, ANALYSIS_LIMIT);
+  const top = candidates.slice(0, ANALYSIS_LIMIT);
 
   const analysed: AnalysedCandidate[] = [];
   const survivors: Candidate[] = [];
@@ -92,14 +132,15 @@ export async function generateBrief(): Promise<StoredBrief> {
     asOf: brief.asOf,
     generatedAt,
     regime: brief.regime,
-    candidates: brief.candidates,
+    candidates,
     analysed,
     portfolio,
+    narrativeIdeas,
     aiRan: true,
   };
   await save(stored);
   console.log(
-    `[brief] stored — ${brief.candidates.length} candidates, ${analysed.length} analysed, ${survivors.length} survivors, ${portfolio.positions.length} positions`,
+    `[brief] stored — ${candidates.length} candidates, ${analysed.length} analysed, ${survivors.length} survivors, ${portfolio.positions.length} positions`,
   );
   return stored;
 }

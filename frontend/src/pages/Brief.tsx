@@ -349,6 +349,50 @@ export function Brief() {
         </>
       )}
 
+      {/* ---- From the feed (news-driven discovery) ---- */}
+      {brief && brief.narrativeIdeas.length > 0 && (
+        <>
+          <p className="section-label">From the feed</p>
+          <div className="panel">
+            <p className="tile-note" style={{ marginTop: 0 }}>
+              Names your newsletters and podcasts are talking about with momentum right now.
+            </p>
+            <div className="tbl-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Symbol</th>
+                    <th>Conviction</th>
+                    <th>In the book?</th>
+                    <th>Why it surfaced</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {brief.narrativeIdeas.map((idea) => (
+                    <tr key={idea.symbol}>
+                      <td>
+                        <strong>{idea.symbol}</strong>
+                      </td>
+                      <td>
+                        <Stars conviction={Math.max(1, Math.min(5, idea.confidence)) as 1 | 2 | 3 | 4 | 5} />
+                      </td>
+                      <td>
+                        {idea.inBook ? (
+                          <span className="chip tone-pos">In the book</span>
+                        ) : (
+                          <span className="chip">Idea only</span>
+                        )}
+                      </td>
+                      <td className="exit-plan">{idea.reason}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* ---- 3. All candidates ---- */}
       <p className="section-label">All candidates</p>
       {!brief ? (

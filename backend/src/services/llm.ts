@@ -14,6 +14,12 @@ import {
   validateAnalystVerdict,
   validateRedTeamVerdict,
 } from './analyst.parse.js';
+import {
+  buildDiscoveryPrompt,
+  validateDiscovered,
+  type DiscoveredTicker,
+  type ResearchItem,
+} from './discovery.parse.js';
 
 const MODEL = 'claude-opus-5';
 const MAX_TOKENS = 6000;
@@ -70,6 +76,22 @@ export async function redTeamPass(verdict: AnalystVerdict, dossier: Dossier): Pr
   } catch (err) {
     console.warn(`[redteam] ${verdict.symbol} failed: ${err instanceof Error ? err.message : String(err)}`);
     return validateRedTeamVerdict(null, verdict.symbol);
+  }
+}
+
+/** News-driven discovery — the model names tickers being discussed with real
+ * momentum/catalyst; the gate keeps only well-formed, source-cited ones. */
+export async function discoverTickers(
+  items: ResearchItem[],
+  validEvidenceIds: Set<string>,
+): Promise<DiscoveredTicker[]> {
+  if (items.length === 0) return [];
+  const { system, user } = buildDiscoveryPrompt(items);
+  try {
+    return validateDiscovered(await callJson(system, user), validEvidenceIds);
+  } catch (err) {
+    console.warn(`[discovery] failed: ${err instanceof Error ? err.message : String(err)}`);
+    return [];
   }
 }
 

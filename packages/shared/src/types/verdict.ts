@@ -39,6 +39,15 @@ export interface AnalysedCandidate {
   survived: boolean;
 }
 
+/** A ticker the news/podcast feed surfaced with bullish momentum (Stage 1 discovery). */
+export interface NarrativeIdea {
+  symbol: string;
+  reason: string;
+  confidence: number;
+  /** Whether this name is in the screened universe and made the candidate list. */
+  inBook: boolean;
+}
+
 /** The stored weekly brief — the whole pipeline's output, served by the API. */
 export interface StoredBrief {
   asOf: string;
@@ -50,6 +59,8 @@ export interface StoredBrief {
   analysed: AnalysedCandidate[];
   /** Stage 5 — the sized portfolio, built from the survivors. */
   portfolio: Portfolio;
+  /** Names the news/podcast feed surfaced with momentum (Stage 1 discovery). */
+  narrativeIdeas: NarrativeIdea[];
   /** True when the AI stages ran; false means a rules-only fallback. */
   aiRan: boolean;
 }
