@@ -23,10 +23,13 @@ import {
 
 const MODEL = 'claude-opus-5';
 const MAX_TOKENS = 6000;
-/** Discovery scans a large batch of transcripts and can emit a long ticker list,
- * so it needs far more room than a single-candidate verdict — with a small budget
- * the model exhausts it while thinking and returns no answer at all. */
-const DISCOVERY_MAX_TOKENS = 20_000;
+/** Discovery is an extraction task — "list the stocks discussed bullishly" — not a
+ * reasoning one. Run it at LOW effort so the token budget goes to the answer, not
+ * to extended thinking (at medium effort the model spent the whole budget thinking
+ * and returned stop_reason=max_tokens with no text). A small budget is plenty for
+ * a JSON list of a few tickers. */
+const DISCOVERY_MAX_TOKENS = 4000;
+const DISCOVERY_EFFORT = 'low';
 
 let client: Anthropic | null = null;
 function anthropic(): Anthropic {
@@ -49,11 +52,16 @@ function extractJson(text: string): unknown {
   }
 }
 
-async function callJson(system: string, user: string, maxTokens = MAX_TOKENS): Promise<unknown> {
+async function callJson(
+  system: string,
+  user: string,
+  maxTokens = MAX_TOKENS,
+  effort: 'low' | 'medium' | 'high' = 'medium',
+): Promise<unknown> {
   const res = await anthropic().messages.create({
     model: MODEL,
     max_tokens: maxTokens,
-    output_config: { effort: 'medium' },
+    output_config: { effort },
     system,
     messages: [{ role: 'user', content: user }],
   });
@@ -95,7 +103,7 @@ export async function discoverTickers(items: ResearchItem[]): Promise<Discovered
   const { system, user } = buildDiscoveryPrompt(items);
   const validRefs = new Set(items.map((_, i) => String(i + 1))); // items are cited by number
   try {
-    const raw = await callJson(system, user, DISCOVERY_MAX_TOKENS);
+    const raw = await callJson(system, user, DISCOVERY_MAX_TOKENS, DISCOVERY_EFFORT);
     const out = validateDiscovered(raw, validRefs);
     if (out.length === 0) {
       // Surface why nothing survived — an empty model reply vs. everything filtered.
