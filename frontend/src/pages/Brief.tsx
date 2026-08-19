@@ -93,13 +93,13 @@ function PositionsTable({ positions }: { positions: SizedPosition[] }) {
             <th>Symbol</th>
             <th>Direction</th>
             <th>Conviction</th>
+            <th className="num">% Book</th>
             <th className="num">Shares</th>
             <th className="num">Position</th>
             <th className="num">Entry</th>
-            <th className="num">Stop</th>
-            <th className="num">Target</th>
-            <th className="num">Exit</th>
+            <th className="num">Init. stop</th>
             <th className="num">Risk</th>
+            <th>Exit plan</th>
           </tr>
         </thead>
         <tbody>
@@ -123,13 +123,13 @@ function PositionsTable({ positions }: { positions: SizedPosition[] }) {
               <td>
                 <Stars conviction={p.conviction} />
               </td>
+              <td className="num">{Math.round(p.weight * 100)}%</td>
               <td className="num">{p.shares.toLocaleString()}</td>
               <td className="num">{money.format(p.positionValue)}</td>
               <td className="num">{money2.format(p.entry)}</td>
               <td className="num">{money2.format(p.stop)}</td>
-              <td className="num">{money2.format(p.target)}</td>
-              <td className="num">{p.exitDate}</td>
               <td className="num">{money.format(p.riskDollars)}</td>
+              <td className="exit-plan">{p.trailRule}</td>
             </tr>
           ))}
         </tbody>
@@ -243,11 +243,11 @@ export function Brief() {
       <div className="panel">
         <div className="tiles" style={{ marginTop: 0 }}>
           <div className="tile">
-            <div className="tile-label">Weekly risk budget</div>
+            <div className="tile-label">Book deployed</div>
             <div className="tile-value">
-              <Value value={portfolio && money.format(portfolio.weeklyRiskBudget)} />
+              <Value value={portfolio && pct(portfolio.deployFraction, 0)} />
             </div>
-            <div className="tile-note">Most that can be lost to stops this week</div>
+            <div className="tile-note">Share of the $100k put to work</div>
           </div>
           <div className="tile">
             <div className="tile-label">Capital deployed</div>
@@ -297,6 +297,19 @@ export function Brief() {
               <li key={i}>{note}</li>
             ))}
           </ul>
+        )}
+
+        {portfolio && portfolio.watchlist.length > 0 && (
+          <div className="watchlist">
+            <div className="watchlist-label">Sat out — reports earnings inside the hold (revisit after):</div>
+            <ul className="brief-notes">
+              {portfolio.watchlist.map((w) => (
+                <li key={w.symbol}>
+                  <strong>{w.symbol}</strong> — {w.reason}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
 

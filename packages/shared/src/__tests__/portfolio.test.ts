@@ -1,101 +1,87 @@
 import { describe, expect, it } from 'vitest';
 import { buildPortfolio, type PositionInput, type PortfolioConfig } from '../engine/portfolio.js';
-import { buildRiskLimits } from '../types/risk.js';
+import { buildRiskLimits, type MarketRegime } from '../types/risk.js';
 import type { Candidate, DossierRegime } from '../types/candidate.js';
 
 const LIMITS = buildRiskLimits(100_000, 30_000);
-const RISK_ON: DossierRegime = { regime: 'RISK_ON_TREND', leverageAllowed: true, riskBudget: 0.06, asOf: '2026-08-17' };
+const regimeOf = (regime: MarketRegime): DossierRegime => ({
+  regime,
+  leverageAllowed: regime === 'RISK_ON_TREND',
+  riskBudget: 0.06,
+  asOf: '2026-08-17',
+});
 
-function candidate(symbol: string, direction: 'BULLISH' | 'BEARISH' = 'BULLISH', conviction = 3): Candidate {
-  return { symbol, exposure: symbol, direction, conviction: conviction as Candidate['conviction'], screens: [], asOf: '2026-08-17' };
+function candidate(symbol: string, conviction = 3): Candidate {
+  return { symbol, exposure: symbol, direction: 'BULLISH', conviction: conviction as Candidate['conviction'], screens: [], asOf: '2026-08-17' };
+}
+
+function input(symbol: string, strength: number, over: Partial<PositionInput> = {}): PositionInput {
+  return {
+    candidate: candidate(symbol),
+    entry: 100,
+    atr: 3,
+    vehicle: { symbol, leverageFactor: 1, isInverse: false, price: 100 },
+    strength,
+    earningsWithinHold: false,
+    ...over,
+  };
 }
 
 function cfg(over: Partial<PortfolioConfig> = {}): PortfolioConfig {
-  return { capital: 100_000, drawdown: 0, regime: RISK_ON, limits: LIMITS, asOf: '2026-08-17', ...over };
+  return { capital: 100_000, drawdown: 0, regime: regimeOf('RISK_ON_TREND'), limits: LIMITS, asOf: '2026-08-17', ...over };
 }
 
-describe('buildPortfolio', () => {
-  it('sizes a bullish position with a tight stop, 3:1 target, and an exit date', () => {
-    const inputs: PositionInput[] = [
-      { candidate: candidate('AAPL'), entry: 100, atr: 2, vehicle: { symbol: 'AAPL', leverageFactor: 1, isInverse: false, price: 100 } },
-    ];
-    const pf = buildPortfolio(inputs, cfg());
+describe('buildPortfolio — momentum concentration', () => {
+  it('deploys ~the whole book in Risk-On and gives each position a stop + trail rule', () => {
+    const pf = buildPortfolio([input('AAA', 4), input('BBB', 3), input('CCC', 2)], cfg());
+    expect(pf.deployFraction).toBe(1);
+    // deployed close to the full book (share rounding leaves a little cash)
+    expect(pf.capitalDeployed).toBeGreaterThan(95_000);
+    expect(pf.capitalDeployed).toBeLessThanOrEqual(100_000);
+    for (const p of pf.positions) {
+      expect(p.stop).toBeLessThan(p.entry); // long stop below entry
+      expect(p.trailRule).toContain('20-day');
+    }
+  });
+
+  it('concentrates on the strongest name', () => {
+    const pf = buildPortfolio([input('STRONG', 5), input('WEAK', 2)], cfg());
+    const strong = pf.positions.find((p) => p.symbol === 'STRONG')!;
+    const weak = pf.positions.find((p) => p.symbol === 'WEAK')!;
+    // strength^2.5 → 5^2.5 ≈ 55.9 vs 2^2.5 ≈ 5.7 → strong gets ~90% of the book
+    expect(strong.weight).toBeGreaterThan(weak.weight * 5);
+  });
+
+  it('can put the full book in a single standout', () => {
+    const pf = buildPortfolio([input('ONLY', 5)], cfg());
     expect(pf.positions).toHaveLength(1);
-    const p = pf.positions[0]!;
-    // stopFraction = 2*2/100 = 0.04 → stop 96; targetFraction = 6*2/100 = 0.12 → target 112 (3:1)
-    expect(p.stop).toBeCloseTo(96, 6);
-    expect(p.target).toBeCloseTo(112, 6);
-    expect(p.exitDate).toBe('2026-08-27'); // asOf + 10 days
-    // per-position cap (20% of 100k = 20k) binds → 200 shares at $100
-    expect(p.positionValue).toBeCloseTo(20_000, 6);
-    expect(p.shares).toBe(200);
-    expect(p.bookFraction).toBeCloseTo(0.2, 6);
+    expect(pf.positions[0]!.weight).toBeGreaterThan(0.95);
+    expect(pf.notes.some((n) => n.includes('Full concentration'))).toBe(true);
   });
 
-  it('keeps the leveraged sleeve within the 20%-of-book cap', () => {
-    const inputs: PositionInput[] = Array.from({ length: 3 }, (_, i) => ({
-      candidate: candidate(`E${i}`, 'BULLISH', 5),
-      entry: 100,
-      atr: 2,
-      vehicle: { symbol: `LEV${i}`, leverageFactor: 3, isInverse: false, price: 50 },
-    }));
-    const pf = buildPortfolio(inputs, cfg());
-    // total leveraged notional must not exceed 20% of 100k = 20k
-    const leveraged = pf.positions.reduce((s, p) => s + p.positionValue, 0);
-    expect(leveraged).toBeLessThanOrEqual(20_000 + 1);
-    expect(pf.leveragedFraction).toBeLessThanOrEqual(0.2 + 1e-9);
+  it('dodges earnings — a name reporting inside the hold is watch-listed, not sized', () => {
+    const pf = buildPortfolio([input('RPTS', 5, { earningsWithinHold: true }), input('SAFE', 3)], cfg());
+    expect(pf.positions.map((p) => p.symbol)).toEqual(['SAFE']);
+    expect(pf.watchlist.map((w) => w.symbol)).toEqual(['RPTS']);
+    expect(pf.watchlist[0]!.reason).toContain('earnings');
   });
 
-  it('halves sizing when drawdown breaches the first breaker', () => {
-    const full = buildPortfolio(
-      [{ candidate: candidate('X'), entry: 100, atr: 5, vehicle: { symbol: 'X', leverageFactor: 1, isInverse: false, price: 100 } }],
-      cfg(),
-    );
-    const halved = buildPortfolio(
-      [{ candidate: candidate('X'), entry: 100, atr: 5, vehicle: { symbol: 'X', leverageFactor: 1, isInverse: false, price: 100 } }],
-      cfg({ drawdown: 12_000 }), // > halveSizeAt (10k)
-    );
-    expect(halved.breaker).toBe('HALVE_SIZE');
-    expect(halved.weeklyRiskBudget).toBeCloseTo(full.weeklyRiskBudget / 2, 6);
-  });
-
-  it('opens no positions at the pause breaker or in a crisis', () => {
-    const paused = buildPortfolio(
-      [{ candidate: candidate('X'), entry: 100, atr: 5, vehicle: { symbol: 'X', leverageFactor: 1, isInverse: false, price: 100 } }],
-      cfg({ drawdown: 21_000 }), // > pauseAt (20k)
-    );
-    expect(paused.breaker).toBe('PAUSE_AND_REVIEW');
-    expect(paused.positions).toEqual([]);
-
-    const crisis = buildPortfolio(
-      [{ candidate: candidate('X'), entry: 100, atr: 5, vehicle: { symbol: 'X', leverageFactor: 1, isInverse: false, price: 100 } }],
-      cfg({ regime: { ...RISK_ON, regime: 'CRISIS' } }),
-    );
+  it('tapers deployment by regime and halts in crisis', () => {
+    expect(buildPortfolio([input('X', 4)], cfg({ regime: regimeOf('CHOP') })).deployFraction).toBe(0.5);
+    const crisis = buildPortfolio([input('X', 4)], cfg({ regime: regimeOf('CRISIS') }));
+    expect(crisis.deployFraction).toBe(0);
     expect(crisis.positions).toEqual([]);
   });
 
-  it('never deploys more than settled capital (scales to fit)', () => {
-    // Small ATR → each position wants the per-position cap; 8 of them would sum
-    // to 160% of book, so the settled-cash constraint scales them down.
-    const inputs: PositionInput[] = Array.from({ length: 8 }, (_, i) => ({
-      candidate: candidate(`S${i}`),
-      entry: 100,
-      atr: 1,
-      vehicle: { symbol: `S${i}`, leverageFactor: 1, isInverse: false, price: 100 },
-    }));
-    const pf = buildPortfolio(inputs, cfg());
-    expect(pf.capitalDeployed).toBeLessThanOrEqual(100_000 + 1);
-    expect(pf.notes.some((n) => n.includes('settled capital'))).toBe(true);
+  it('halves deployment at the first breaker and opens nothing at the pause breaker', () => {
+    expect(buildPortfolio([input('X', 4)], cfg({ drawdown: 12_000 })).deployFraction).toBe(0.5);
+    const paused = buildPortfolio([input('X', 4)], cfg({ drawdown: 21_000 }));
+    expect(paused.breaker).toBe('PAUSE_AND_REVIEW');
+    expect(paused.positions).toEqual([]);
   });
 
-  it('spreads the weekly risk budget across at most the position cap', () => {
-    const inputs: PositionInput[] = Array.from({ length: 20 }, (_, i) => ({
-      candidate: candidate(`S${i}`),
-      entry: 100,
-      atr: 5,
-      vehicle: { symbol: `S${i}`, leverageFactor: 1, isInverse: false, price: 100 },
-    }));
-    const pf = buildPortfolio(inputs, cfg());
-    expect(pf.positions.length).toBeLessThanOrEqual(8);
+  it('caps the book at the position limit', () => {
+    const inputs = Array.from({ length: 12 }, (_, i) => input(`S${i}`, 3));
+    expect(buildPortfolio(inputs, cfg()).positions.length).toBeLessThanOrEqual(5);
   });
 });

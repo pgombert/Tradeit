@@ -1,229 +1,195 @@
 /**
- * Stage 5 — portfolio construction. Turns ranked candidates into positions that
- * each carry a size, a stop, and a mandatory exit date, bounded by the week's
- * regime risk budget, per-position and leverage caps, and the drawdown breakers
- * (docs/PLAN.md §1/§5). Pure and deterministic: inputs in, a portfolio out.
+ * Stage 5 — portfolio construction, momentum-concentration model (docs/PLAN.md §1/§5).
  *
- * The stop is the return driver, not a safety rail (§1): a tight ATR stop against
- * a wider target (3:1 by default). Sizing is risk-based — each position risks an
- * equal slice of the weekly budget to its stop — which naturally shrinks a
- * leveraged or high-volatility position.
+ * The strategy is nimble momentum on a $100k book: concentrate hard on the
+ * strongest setups (up to the whole book on a standout), ride winners with a
+ * trailing exit, cut losers fast with an initial stop, and *dodge the scheduled
+ * landmines* — never hold a concentrated position into an earnings date, since a
+ * stop can't protect through an overnight gap. Black swans are the accepted tail.
  *
- * NOTE (v1): the sizing arithmetic here is `number`, not `Decimal`. These are
- * advisory sizes on a research brief that Pete places by hand; no money is
- * accounted on them yet. When Stage 7 books real fills and P&L, this moves to
- * Decimal end-to-end (CLAUDE.md rule 2).
+ * Deployment scales with the regime (full in Risk-On, tapering to zero in Crisis)
+ * and is throttled by the drawdown breaker ladder.
+ *
+ * Pure and deterministic. NOTE (v1): sizing is `number`, not `Decimal` — advisory
+ * sizes on a research brief Pete places by hand; moves to Decimal at Stage 7.
  */
-import { MAX_LEVERAGED_BOOK_FRACTION, breakerFor, type BreakerLevel, type RiskLimits } from '../types/risk.js';
+import { breakerFor, type BreakerLevel, type RiskLimits, type MarketRegime } from '../types/risk.js';
 import type { Conviction, Direction } from './instrument-selection.js';
 import type { Candidate, DossierRegime } from '../types/candidate.js';
 
-/** ATR multiples: a tight stop against a wider runner — 3:1 by default. */
-const STOP_ATR_MULT = 2;
-const TARGET_ATR_MULT = 6;
-/** Stop/target fractions when ATR is unavailable (short history). */
-const DEFAULT_STOP_FRACTION = 0.06;
-const DEFAULT_TARGET_FRACTION = 0.18;
-/** How many positions the weekly risk budget is spread across. */
-const MAX_POSITIONS = 8;
-/** Hard cap on any one position as a fraction of book. */
-const MAX_POSITION_FRACTION = 0.2;
-/** Weekly holds — the mandatory exit date is this many calendar days out. */
-const HORIZON_DAYS = 10;
+/** How hard to concentrate: weight ∝ strength^power. Higher → the leader dominates. */
+const CONCENTRATION_POWER = 2.5;
+/** At most this many names carry the book at once. */
+const MAX_POSITIONS = 5;
+/** Initial stop distance, in ATRs — tight enough to cut a loser fast. */
+const STOP_ATR_MULT = 2.5;
+/** Fallback stop fraction when ATR is unavailable. */
+const DEFAULT_STOP_FRACTION = 0.08;
+/** The trailing exit reference — ride while above it. */
+const TRAIL_MA = 20;
+/** Fraction of the book deployed by regime, before the breaker throttles it. */
+const DEPLOY_BY_REGIME: Record<MarketRegime, number> = {
+  RISK_ON_TREND: 1.0,
+  CHOP: 0.5,
+  RISK_OFF: 0.25,
+  CRISIS: 0,
+};
 
-/** The tradable vehicle for a candidate, with the price used to count shares. */
 export interface PositionVehicle {
   symbol: string;
   leverageFactor: number;
   isInverse: boolean;
-  /** Latest close of the vehicle itself (not the underlying). */
   price: number;
 }
 
-/** One candidate prepared for sizing: the underlying entry/ATR and its vehicle. */
 export interface PositionInput {
   candidate: Candidate;
-  /** Latest close of the screened (underlying) security — the stop/target basis. */
+  /** Latest close of the screened security — the stop basis. */
   entry: number;
-  /** Underlying ATR(14), or null on a short history. */
   atr: number | null;
   vehicle: PositionVehicle;
+  /** Concentration weight basis: conviction blended with momentum (larger = bigger). */
+  strength: number;
+  /** A scheduled binary event (earnings) falls inside the intended hold. */
+  earningsWithinHold: boolean;
 }
 
 export interface SizedPosition {
-  symbol: string; // the underlying/screened security
-  instrument: string; // the vehicle actually traded
+  symbol: string;
+  instrument: string;
   direction: Direction;
   conviction: Conviction;
   leveraged: boolean;
-  /** Prices on the underlying — the decision triggers. */
   entry: number;
+  /** Initial stop — cut the loser here. */
   stop: number;
-  target: number;
-  exitDate: string;
-  /** Vehicle shares and the resulting book commitment. */
+  /** Ride-winner exit guidance. */
+  trailRule: string;
+  /** Fraction of the whole book this position is. */
+  weight: number;
   shares: number;
   positionValue: number;
-  riskDollars: number;
   bookFraction: number;
+  /** Downside to the initial stop. */
+  riskDollars: number;
   rationale: string;
 }
 
+/** A name kept out of the sized book, and why (e.g. earnings inside the hold). */
+export interface WatchlistItem {
+  symbol: string;
+  reason: string;
+}
+
 export interface PortfolioConfig {
-  /** Book size to size against (settled equity, or the starting capital). */
   capital: number;
-  /** Drawdown from peak, for the breaker ladder. 0 when unknown. */
   drawdown: number;
   regime: DossierRegime;
   limits: RiskLimits;
-  /** The brief date; the exit date is computed from it. */
   asOf: string;
 }
 
 export interface Portfolio {
   positions: SizedPosition[];
-  weeklyRiskBudget: number;
   breaker: BreakerLevel;
+  /** Fraction of the book put to work this week. */
+  deployFraction: number;
   capitalDeployed: number;
   leveragedFraction: number;
   notes: string[];
+  /** Strong names deliberately not sized (earnings inside the hold, etc.). */
+  watchlist: WatchlistItem[];
 }
 
-/** Add whole days to a YYYY-MM-DD date, returning YYYY-MM-DD. */
-function addDays(iso: string, days: number): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
+function trailRule(): string {
+  return `Ride it while it works — exit on a daily close below the ${TRAIL_MA}-day average, or if the initial stop breaks.`;
 }
 
-function empty(breaker: BreakerLevel, notes: string[]): Portfolio {
-  return { positions: [], weeklyRiskBudget: 0, breaker, capitalDeployed: 0, leveragedFraction: 0, notes };
-}
-
-function sizeOne(
-  input: PositionInput,
-  perPositionRisk: number,
-  cfg: PortfolioConfig,
-  leverageHeadroom: number,
-): SizedPosition | null {
-  const { candidate, entry, atr, vehicle } = input;
-  if (entry <= 0 || vehicle.price <= 0) return null;
-
-  const stopFraction = atr && atr > 0 ? (STOP_ATR_MULT * atr) / entry : DEFAULT_STOP_FRACTION;
-  const targetFraction = atr && atr > 0 ? (TARGET_ATR_MULT * atr) / entry : DEFAULT_TARGET_FRACTION;
-  const long = candidate.direction === 'BULLISH';
-
-  // Underlying decision triggers. A bearish view is invalidated by a rise.
-  const stop = long ? entry * (1 - stopFraction) : entry * (1 + stopFraction);
-  const target = long ? entry * (1 + targetFraction) : entry * (1 - targetFraction);
-
-  // The vehicle moves leverageFactor× the underlying, so its risk per dollar of
-  // notional is that much larger — which shrinks the position.
-  const effectiveRiskFraction = stopFraction * vehicle.leverageFactor;
-  if (effectiveRiskFraction <= 0) return null;
-
-  let positionValue = Math.min(perPositionRisk / effectiveRiskFraction, MAX_POSITION_FRACTION * cfg.capital);
-  // Keep the leveraged sleeve under its cap by trimming, not dropping.
-  if (vehicle.leverageFactor > 1) positionValue = Math.min(positionValue, leverageHeadroom);
-  if (positionValue <= 0) return null;
-
-  const shares = Math.floor(positionValue / vehicle.price);
-  if (shares <= 0) return null;
-
-  const actualValue = shares * vehicle.price;
-  const riskDollars = actualValue * effectiveRiskFraction;
-
-  return {
-    symbol: candidate.symbol,
-    instrument: vehicle.symbol,
-    direction: candidate.direction,
-    conviction: candidate.conviction,
-    leveraged: vehicle.leverageFactor > 1,
-    entry,
-    stop,
-    target,
-    exitDate: addDays(cfg.asOf, HORIZON_DAYS),
-    shares,
-    positionValue: actualValue,
-    riskDollars,
-    bookFraction: actualValue / cfg.capital,
-    rationale:
-      `${vehicle.symbol}${vehicle.leverageFactor > 1 ? ` (${vehicle.leverageFactor}x)` : ''}: ` +
-      `risk ~$${riskDollars.toFixed(0)} to a ${(stopFraction * 100).toFixed(1)}% stop, ${(targetFraction / stopFraction).toFixed(1)}:1 target.`,
-  };
+function empty(breaker: BreakerLevel, deployFraction: number, notes: string[], watchlist: WatchlistItem[] = []): Portfolio {
+  return { positions: [], breaker, deployFraction, capitalDeployed: 0, leveragedFraction: 0, notes, watchlist };
 }
 
 /**
- * Build the week's portfolio. Honours the breaker ladder first (halve / pause /
- * hard stop), gates out Crisis, spreads the regime risk budget across the top
- * candidates, sizes each to an equal risk slice, and keeps the leveraged sleeve
- * within its cap.
+ * Build the week's book: dodge earnings, concentrate the deployable capital on
+ * the strongest setups, and give each a stop and a trailing exit. Honours the
+ * breaker ladder and Crisis first.
  */
 export function buildPortfolio(inputs: PositionInput[], cfg: PortfolioConfig): Portfolio {
   const breaker = breakerFor(cfg.drawdown, cfg.limits);
   if (breaker === 'HARD_STOP') {
-    return empty(breaker, ['Drawdown hit the hard floor — program halted. No positions.']);
+    return empty(breaker, 0, ['Drawdown hit the hard floor — program halted. No positions.']);
   }
   if (breaker === 'PAUSE_AND_REVIEW') {
-    return empty(breaker, ['Drawdown breached the pause level — trading paused for review. No new positions.']);
-  }
-  if (cfg.regime.regime === 'CRISIS') {
-    return empty(breaker, ['Crisis regime — no new positions this week.']);
+    return empty(breaker, 0, ['Drawdown breached the pause level — trading paused for review. No new positions.']);
   }
 
+  const regimeDeploy = DEPLOY_BY_REGIME[cfg.regime.regime] ?? 0;
+  const deployFraction = regimeDeploy * (breaker === 'HALVE_SIZE' ? 0.5 : 1);
   const notes: string[] = [];
-  const sizeMult = breaker === 'HALVE_SIZE' ? 0.5 : 1;
-  if (breaker === 'HALVE_SIZE') notes.push('Drawdown breached the first breaker — position sizes halved.');
+  if (breaker === 'HALVE_SIZE') notes.push('Drawdown breached the first breaker — deployment halved.');
+  if (cfg.regime.regime !== 'RISK_ON_TREND') {
+    notes.push(`Regime is ${cfg.regime.regime.replace(/_/g, ' ').toLowerCase()} — deploying only ${(deployFraction * 100).toFixed(0)}% of the book.`);
+  }
 
-  const weeklyRisk = cfg.capital * cfg.regime.riskBudget * sizeMult;
-  const selected = inputs.slice(0, MAX_POSITIONS);
-  if (selected.length === 0) return empty(breaker, ['No candidates to size.']);
+  // Earnings dodge: strong names reporting inside the hold go to the watchlist,
+  // never into a concentrated position that an overnight gap could wreck.
+  const watchlist: WatchlistItem[] = [];
+  const eligible: PositionInput[] = [];
+  for (const inp of inputs) {
+    if (inp.earningsWithinHold) {
+      watchlist.push({ symbol: inp.candidate.symbol, reason: 'Reports inside the hold window — no concentrated position into an earnings gap. Revisit after it prints.' });
+      continue;
+    }
+    if (inp.entry > 0 && inp.vehicle.price > 0 && inp.strength > 0) eligible.push(inp);
+  }
 
-  const perPositionRisk = weeklyRisk / selected.length;
-  const leverageCap = cfg.capital * MAX_LEVERAGED_BOOK_FRACTION;
+  if (deployFraction <= 0) {
+    notes.push('No capital deployed this week.');
+    return empty(breaker, deployFraction, notes, watchlist);
+  }
+  if (eligible.length === 0) return empty(breaker, deployFraction, [...notes, 'No eligible names to size.'], watchlist);
+
+  // Concentrate: the strongest setups, weighted by strength^power so a standout
+  // can take most (or all) of the book.
+  eligible.sort((a, b) => b.strength - a.strength);
+  const chosen = eligible.slice(0, MAX_POSITIONS);
+  const totalW = chosen.reduce((s, i) => s + Math.pow(i.strength, CONCENTRATION_POWER), 0);
+  const deployable = cfg.capital * deployFraction;
 
   const positions: SizedPosition[] = [];
-  let leveragedNotional = 0;
-  for (const input of selected) {
-    const headroom = leverageCap - leveragedNotional;
-    const sized = sizeOne(input, perPositionRisk, cfg, headroom);
-    if (!sized) continue;
-    if (sized.leveraged) leveragedNotional += sized.positionValue;
-    positions.push(sized);
+  for (const inp of chosen) {
+    const weight = Math.pow(inp.strength, CONCENTRATION_POWER) / totalW;
+    const notional = deployable * weight;
+    const shares = Math.floor(notional / inp.vehicle.price);
+    if (shares <= 0) continue;
+
+    const value = shares * inp.vehicle.price;
+    const stopFraction = inp.atr && inp.atr > 0 ? (STOP_ATR_MULT * inp.atr) / inp.entry : DEFAULT_STOP_FRACTION;
+    const stop = inp.entry * (1 - stopFraction); // long-only momentum
+    const riskDollars = value * stopFraction * inp.vehicle.leverageFactor;
+
+    positions.push({
+      symbol: inp.candidate.symbol,
+      instrument: inp.vehicle.symbol,
+      direction: inp.candidate.direction,
+      conviction: inp.candidate.conviction,
+      leveraged: inp.vehicle.leverageFactor > 1,
+      entry: inp.entry,
+      stop,
+      trailRule: trailRule(),
+      weight: value / cfg.capital,
+      shares,
+      positionValue: value,
+      bookFraction: value / cfg.capital,
+      riskDollars,
+      rationale:
+        `${(value / cfg.capital * 100).toFixed(0)}% of book${inp.vehicle.leverageFactor > 1 ? ` via ${inp.vehicle.symbol} (${inp.vehicle.leverageFactor}x)` : ''}; ` +
+        `initial stop ${(stopFraction * 100).toFixed(1)}% (~$${riskDollars.toFixed(0)} at risk), then trail.`,
+    });
   }
 
-  // Settled-cash constraint: a cash IRA can't deploy more than it holds. If the
-  // per-position sizes sum past the book, scale every position down to fit.
-  const grossValue = positions.reduce((s, p) => s + p.positionValue, 0);
-  if (grossValue > cfg.capital && grossValue > 0) {
-    const scale = cfg.capital / grossValue;
-    for (const p of positions) {
-      const price = p.positionValue / p.shares; // shares > 0 by construction
-      const riskPerValue = p.riskDollars / p.positionValue;
-      p.shares = Math.floor(p.shares * scale);
-      p.positionValue = p.shares * price;
-      p.riskDollars = p.positionValue * riskPerValue;
-      p.bookFraction = p.positionValue / cfg.capital;
-    }
-    notes.push('Positions scaled to fit settled capital (no borrowing).');
-  }
-
-  const remaining = positions.filter((p) => p.shares > 0);
-  if (leveragedNotional > 0) {
-    notes.push(
-      `Leveraged sleeve ${((leveragedNotional / cfg.capital) * 100).toFixed(1)}% of book (cap ${(MAX_LEVERAGED_BOOK_FRACTION * 100).toFixed(0)}%).`,
-    );
-  }
-
-  const capitalDeployed = remaining.reduce((s, p) => s + p.positionValue, 0);
-  const leveragedFraction =
-    remaining.filter((p) => p.leveraged).reduce((s, p) => s + p.positionValue, 0) / cfg.capital;
-  return {
-    positions: remaining,
-    weeklyRiskBudget: weeklyRisk,
-    breaker,
-    capitalDeployed,
-    leveragedFraction,
-    notes,
-  };
+  const capitalDeployed = positions.reduce((s, p) => s + p.positionValue, 0);
+  const leveragedFraction = positions.filter((p) => p.leveraged).reduce((s, p) => s + p.positionValue, 0) / cfg.capital;
+  if (positions.length === 1) notes.push(`Full concentration — one position carrying ${(positions[0]!.weight * 100).toFixed(0)}% of the book.`);
+  return { positions, breaker, deployFraction, capitalDeployed, leveragedFraction, notes, watchlist };
 }

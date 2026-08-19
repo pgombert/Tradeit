@@ -41,12 +41,28 @@ async function latestClose(symbol: string): Promise<number | null> {
  * Trend above the conviction floor). A candidate that can't be expressed — a
  * bearish exposure with no inverse, or a crisis regime — is dropped here.
  */
+/** The intended max hold in calendar days — the window we dodge earnings in. */
+const HOLD_DAYS = 15;
+
+/** Symbols with a scheduled earnings date inside the coming hold window. */
+async function symbolsReportingSoon(symbols: string[]): Promise<Set<string>> {
+  const now = new Date();
+  const until = new Date();
+  until.setDate(until.getDate() + HOLD_DAYS);
+  const rows = await prisma.observation.findMany({
+    where: { kind: 'EARNINGS_EVENT', scope: { in: symbols }, observedAt: { gte: now, lte: until } },
+    select: { scope: true },
+  });
+  return new Set(rows.map((r) => r.scope));
+}
+
 export async function constructPortfolio(
   candidates: Candidate[],
   indicatorsBySymbol: Map<string, Indicators>,
   regime: DossierRegime,
   asOf: string,
 ): Promise<Portfolio> {
+  const reportingSoon = await symbolsReportingSoon(candidates.map((c) => c.symbol));
   const inputs: PositionInput[] = [];
 
   for (const c of candidates) {
@@ -77,11 +93,18 @@ export async function constructPortfolio(
       }
     }
 
+    // Concentration weight: conviction amplified by 3-month momentum, so a
+    // high-conviction rocket dominates a high-conviction plodder.
+    const momentum = Math.max(0, ind.return3m ?? 0);
+    const strength = c.conviction * (1 + 2 * momentum);
+
     inputs.push({
       candidate: c,
       entry: ind.close,
       atr: ind.atr14,
       vehicle: { symbol: vehicleSymbol, leverageFactor, isInverse, price: vehiclePrice },
+      strength,
+      earningsWithinHold: reportingSoon.has(c.symbol),
     });
   }
 
