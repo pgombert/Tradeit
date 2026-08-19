@@ -33,8 +33,10 @@ export interface PromptPair {
   user: string;
 }
 
-/** Trim each item's text so a batch of transcripts fits the context. */
-const PER_ITEM_CHARS = 3500;
+/** Safety cap per item in the prompt; the service already budgets item text, so
+ * this only guards against an unbounded item slipping through. Large enough to
+ * carry a transcript's substance, not just its intro. */
+const PER_ITEM_CHARS = 40_000;
 
 export function buildDiscoveryPrompt(items: ResearchItem[]): PromptPair {
   const body = items
