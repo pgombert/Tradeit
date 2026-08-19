@@ -22,6 +22,9 @@ export interface DiscoveredTicker {
   reason: string;
   /** The observation id the mention came from — must be a real one. */
   evidenceId: string;
+  /** The human-readable source it came from (newsletter/podcast name). Filled by
+   * the service from the cited item; the pure validator leaves it undefined. */
+  source?: string;
   confidence: number; // 1..5
 }
 

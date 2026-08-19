@@ -34,6 +34,10 @@ export interface ScreenHit {
  */
 export interface Candidate {
   symbol: string;
+  /** The company/fund name, e.g. "NVIDIA Corp". Filled by the service from the
+   * securities table; the pure screen/aggregate layer leaves it unset. Always
+   * shown next to the ticker so the brief never reads as bare symbols. */
+  name?: string;
   exposure: string;
   direction: Direction;
   conviction: Conviction;

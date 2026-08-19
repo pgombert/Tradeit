@@ -115,9 +115,12 @@ export async function buildBrief(): Promise<Brief> {
   const baseEtfSymbols = screenableInstruments().map((i) => i.symbol);
   const securityRows = await prisma.security.findMany({
     where: { OR: [{ symbol: { in: baseEtfSymbols } }, { class: 'EQUITY' }] },
-    select: { id: true, symbol: true, avgDollarVolume: true },
+    select: { id: true, symbol: true, name: true, avgDollarVolume: true },
   });
   const validSymbols = new Set(securityRows.map((s) => s.symbol));
+  // Symbol → company name, so every candidate (and the whole brief) reads with
+  // the name beside the ticker, never a bare symbol.
+  const nameBySymbol = new Map(securityRows.map((s) => [s.symbol, s.name]));
 
   const [regimeVerdict, context] = await Promise.all([getRegime(), loadContext()]);
   const regime: DossierRegime = {
@@ -168,13 +171,15 @@ export async function buildBrief(): Promise<Brief> {
   const benchmarkId = securityRows.find((r) => r.symbol === BENCHMARK)?.id;
   const benchmarkBars = benchmarkId ? await loadBars(benchmarkId) : [];
 
-  const { candidates, indicatorsBySymbol, asOf } = runStage1(securities, benchmarkBars, regime, {
+  const { candidates: rawCandidates, indicatorsBySymbol, asOf } = runStage1(securities, benchmarkBars, regime, {
     isValidSymbol: (s) => validSymbols.has(s),
     // Single stocks only in the book: an ETF resolves to a base instrument, a
     // stock doesn't. ETFs are still screened above (market context, relative
     // strength) but never become candidates — this is a single-stock momentum hunt.
     candidateFilter: (s) => !instrumentBySymbol(s),
   });
+  // Attach the company name to every candidate (the pure layer works in symbols).
+  const candidates = rawCandidates.map((c) => ({ ...c, name: nameBySymbol.get(c.symbol) }));
 
   // Each dossier leads with the candidate's own per-ticker evidence (its
   // earnings catalyst, any symbol-scoped items), then the shared market context.

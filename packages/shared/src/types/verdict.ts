@@ -65,8 +65,12 @@ export interface AttributionSummary {
 /** A ticker the news/podcast feed surfaced with bullish momentum (Stage 1 discovery). */
 export interface NarrativeIdea {
   symbol: string;
+  /** Company name where we can resolve it, else undefined (may be outside our universe). */
+  name?: string;
   reason: string;
   confidence: number;
+  /** Where it came from — the newsletter/podcast/source name (the whole point). */
+  source?: string;
   /** Whether this name is in the screened universe and made the candidate list. */
   inBook: boolean;
 }

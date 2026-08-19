@@ -728,3 +728,73 @@ button[type='submit']:disabled {
   color: var(--muted);
   margin-bottom: 8px;
 }
+
+/* ---- Company name beside a ticker ---- */
+.co-name {
+  font-family: var(--sans);
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin-left: 8px;
+}
+
+/* ---- Idea provenance: where an idea came from (research vs market data) ---- */
+.sources {
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule-soft);
+  border-radius: 6px;
+}
+.sources-label {
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.source-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.source {
+  display: grid;
+  grid-template-columns: max-content max-content 1fr;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+.source-badge {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--rule-soft);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.source-badge.tone-good {
+  color: var(--pos);
+  background: var(--pos-wash);
+  border-color: var(--pos-wash);
+}
+.source-name {
+  font-family: var(--sans);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.source-why {
+  color: var(--muted);
+}
+@media (max-width: 560px) {
+  .source { grid-template-columns: 1fr; gap: 3px; }
+}

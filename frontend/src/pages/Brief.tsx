@@ -5,6 +5,7 @@ import type {
   AttributionSummary,
   Candidate,
   DossierRegime,
+  ScreenHit,
   SizedPosition,
   StoredBrief,
 } from '@tradeit/shared';
@@ -85,7 +86,67 @@ function DirectionTag({ direction }: { direction: SizedPosition['direction'] }) 
   return <span className={bull ? 'pos' : 'neg'}>{bull ? 'Bullish' : 'Bearish'}</span>;
 }
 
-function PositionsTable({ positions }: { positions: SizedPosition[] }) {
+/**
+ * How each signal that can surface an idea is labelled, and — the point of this —
+ * whether it came from the research we collect or from raw market data. Pete's
+ * whole thesis is that the information we gather should be the source of ideas,
+ * so every idea shows which it was.
+ */
+const SOURCE_META: Record<string, { label: string; kind: 'research' | 'market' }> = {
+  narrative: { label: 'Newsletter / podcast', kind: 'research' },
+  breakout: { label: 'Price breakout', kind: 'market' },
+  momentum: { label: 'Established trend', kind: 'market' },
+  'mean-reversion': { label: 'Mean reversion', kind: 'market' },
+  'sector-rotation': { label: 'Sector rotation', kind: 'market' },
+};
+
+/** The provenance block: where this idea came from, research vs market data. */
+function SourceList({ screens }: { screens: ScreenHit[] | undefined }) {
+  if (!screens || screens.length === 0) return null;
+  // Research sources first — that's what we most want to see driving ideas.
+  const ordered = [...screens].sort((a, b) => {
+    const ak = SOURCE_META[a.screen]?.kind === 'research' ? 0 : 1;
+    const bk = SOURCE_META[b.screen]?.kind === 'research' ? 0 : 1;
+    return ak - bk;
+  });
+  return (
+    <div className="sources">
+      <span className="sources-label">Where it came from</span>
+      <ul className="source-list">
+        {ordered.map((s, i) => {
+          const meta = SOURCE_META[s.screen] ?? { label: s.screen, kind: 'market' as const };
+          return (
+            <li key={`${s.screen}-${i}`} className={`source source-${meta.kind}`}>
+              <span className={`source-badge ${meta.kind === 'research' ? 'tone-good' : ''}`}>
+                {meta.kind === 'research' ? 'Your research' : 'Market data'}
+              </span>
+              <span className="source-name">{meta.label}</span>
+              <span className="source-why">{s.rationale}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/** "TICKER — Company Name", the company name muted. Falls back to the bare ticker. */
+function Ticker({ symbol, name }: { symbol: string; name?: string }) {
+  return (
+    <>
+      <strong>{symbol}</strong>
+      {name && name !== symbol && <span className="co-name">{name}</span>}
+    </>
+  );
+}
+
+function PositionsTable({
+  positions,
+  nameFor,
+}: {
+  positions: SizedPosition[];
+  nameFor: (symbol: string) => string | undefined;
+}) {
   return (
     <div className="tbl-scroll">
       <table>
@@ -107,15 +168,12 @@ function PositionsTable({ positions }: { positions: SizedPosition[] }) {
           {positions.map((p) => (
             <tr key={`${p.symbol}-${p.instrument}`}>
               <td>
-                <strong>
-                  {p.symbol}
-                  {p.instrument !== p.symbol && (
-                    <>
-                      {' '}
-                      <span className="muted-arrow">{'→'}</span> {p.instrument}
-                    </>
-                  )}
-                </strong>
+                <Ticker symbol={p.symbol} name={nameFor(p.symbol)} />
+                {p.instrument !== p.symbol && (
+                  <div className="tile-note" style={{ margin: '2px 0 0' }}>
+                    <span className="muted-arrow">{'→'}</span> traded via {p.instrument}
+                  </div>
+                )}
                 {p.leveraged && <span className="tag">leveraged</span>}
               </td>
               <td>
@@ -139,18 +197,28 @@ function PositionsTable({ positions }: { positions: SizedPosition[] }) {
   );
 }
 
-function VerdictCard({ item }: { item: AnalysedCandidate }) {
+function VerdictCard({
+  item,
+  name,
+  screens,
+}: {
+  item: AnalysedCandidate;
+  name?: string;
+  screens?: ScreenHit[];
+}) {
   const { analyst, redTeam, survived } = item;
   return (
     <div className={`verdict-card ${survived ? '' : 'killed'}`}>
       <div className="verdict-head">
         <strong className="verdict-symbol">{analyst.symbol}</strong>
+        {name && name !== analyst.symbol && <span className="co-name">{name}</span>}
         <DirectionTag direction={analyst.direction} />
         <Stars conviction={analyst.conviction} />
         <span className={`chip ${survived ? 'tone-good' : 'tone-critical'}`}>
           {survived ? 'Survived' : 'Killed'}
         </span>
       </div>
+      <SourceList screens={screens} />
       <p className="verdict-thesis">{analyst.thesis}</p>
       <p className="tile-note verdict-wrong">
         <strong>Would be wrong if:</strong> {analyst.whatWouldProveWrong}
@@ -197,6 +265,12 @@ export function Brief() {
   const portfolio = brief?.portfolio;
   const survivors = brief?.analysed.filter((a) => a.survived) ?? [];
   const killed = brief?.analysed.filter((a) => !a.survived) ?? [];
+
+  // Symbol → candidate, so any table can show the company name beside the ticker
+  // and the analysis can show which signals surfaced each idea.
+  const candBySymbol = new Map((brief?.candidates ?? []).map((c) => [c.symbol, c]));
+  const nameFor = (symbol: string): string | undefined => candBySymbol.get(symbol)?.name;
+  const screensFor = (symbol: string): ScreenHit[] | undefined => candBySymbol.get(symbol)?.screens;
 
   return (
     <div className="shell">
@@ -288,7 +362,7 @@ export function Brief() {
 
         {portfolio && portfolio.positions.length > 0 && (
           <div style={{ marginTop: 18 }}>
-            <PositionsTable positions={portfolio.positions} />
+            <PositionsTable positions={portfolio.positions} nameFor={nameFor} />
           </div>
         )}
 
@@ -315,7 +389,7 @@ export function Brief() {
             <ul className="brief-notes">
               {portfolio.watchlist.map((w) => (
                 <li key={w.symbol}>
-                  <strong>{w.symbol}</strong> — {w.reason}
+                  <Ticker symbol={w.symbol} name={nameFor(w.symbol)} /> — {w.reason}
                 </li>
               ))}
             </ul>
@@ -340,7 +414,12 @@ export function Brief() {
           {survivors.length > 0 && (
             <div className="verdict-grid">
               {survivors.map((a) => (
-                <VerdictCard key={a.analyst.symbol} item={a} />
+                <VerdictCard
+                  key={a.analyst.symbol}
+                  item={a}
+                  name={nameFor(a.analyst.symbol)}
+                  screens={screensFor(a.analyst.symbol)}
+                />
               ))}
             </div>
           )}
@@ -351,7 +430,12 @@ export function Brief() {
               </p>
               <div className="verdict-grid">
                 {killed.map((a) => (
-                  <VerdictCard key={a.analyst.symbol} item={a} />
+                  <VerdictCard
+                    key={a.analyst.symbol}
+                    item={a}
+                    name={nameFor(a.analyst.symbol)}
+                    screens={screensFor(a.analyst.symbol)}
+                  />
                 ))}
               </div>
             </>
@@ -360,6 +444,19 @@ export function Brief() {
       )}
 
       {/* ---- From the feed (news-driven discovery) ---- */}
+      {brief && brief.narrativeIdeas.length === 0 && (
+        <>
+          <p className="section-label">From the feed</p>
+          <div className="panel">
+            <div className="empty">
+              No ideas came from your research feed this week — the newsletters and podcast
+              transcripts we&apos;ve collected didn&apos;t surface a tradeable name. Every idea below
+              came from market data (see &ldquo;Where it came from&rdquo; in the analysis). As the feed
+              fills with the sources you follow, research-driven ideas will show up here.
+            </div>
+          </div>
+        </>
+      )}
       {brief && brief.narrativeIdeas.length > 0 && (
         <>
           <p className="section-label">From the feed</p>
@@ -372,6 +469,7 @@ export function Brief() {
                 <thead>
                   <tr>
                     <th>Symbol</th>
+                    <th>Source</th>
                     <th>Conviction</th>
                     <th>In the book?</th>
                     <th>Why it surfaced</th>
@@ -381,7 +479,10 @@ export function Brief() {
                   {brief.narrativeIdeas.map((idea) => (
                     <tr key={idea.symbol}>
                       <td>
-                        <strong>{idea.symbol}</strong>
+                        <Ticker symbol={idea.symbol} name={idea.name} />
+                      </td>
+                      <td>
+                        <span className="source-badge tone-good">{idea.source ?? 'Research'}</span>
                       </td>
                       <td>
                         <Stars conviction={Math.max(1, Math.min(5, idea.confidence)) as 1 | 2 | 3 | 4 | 5} />
@@ -493,7 +594,7 @@ export function Brief() {
               {brief.candidates.map((c: Candidate) => (
                 <tr key={c.symbol}>
                   <td>
-                    <strong>{c.symbol}</strong>
+                    <Ticker symbol={c.symbol} name={c.name} />
                   </td>
                   <td>{c.exposure}</td>
                   <td>
@@ -502,7 +603,20 @@ export function Brief() {
                   <td>
                     <Stars conviction={c.conviction} />
                   </td>
-                  <td>{c.screens.map((s) => s.screen).join(', ')}</td>
+                  <td>
+                    {c.screens.map((s, i) => {
+                      const meta = SOURCE_META[s.screen] ?? { label: s.screen, kind: 'market' as const };
+                      return (
+                        <span
+                          key={`${s.screen}-${i}`}
+                          className={`source-badge ${meta.kind === 'research' ? 'tone-good' : ''}`}
+                          style={{ marginRight: 4 }}
+                        >
+                          {meta.label}
+                        </span>
+                      );
+                    })}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -79,6 +79,7 @@ export async function generateBrief(): Promise<StoredBrief> {
   const discovered = await discover();
   const discoveredBy = new Map(discovered.map((d) => [d.symbol, d]));
   const candidateSymbols = new Set(brief.candidates.map((c) => c.symbol));
+  const nameBySymbol = new Map(brief.candidates.map((c) => [c.symbol, c.name]));
 
   const candidates: Candidate[] = brief.candidates
     .map((c) => {
@@ -89,7 +90,14 @@ export async function generateBrief(): Promise<StoredBrief> {
         conviction: Math.min(5, c.conviction + 1) as Conviction,
         screens: [
           ...c.screens,
-          { screen: 'narrative', score: d.confidence / 5, direction: c.direction, rationale: d.reason, evidence: [d.evidenceId] },
+          {
+            screen: 'narrative',
+            score: d.confidence / 5,
+            direction: c.direction,
+            // Lead the rationale with the source so provenance is legible everywhere.
+            rationale: `${d.source ?? 'Research'}: ${d.reason}`,
+            evidence: [d.evidenceId],
+          },
         ],
       };
     })
@@ -97,8 +105,10 @@ export async function generateBrief(): Promise<StoredBrief> {
 
   const narrativeIdeas: NarrativeIdea[] = discovered.map((d) => ({
     symbol: d.symbol,
+    name: nameBySymbol.get(d.symbol),
     reason: d.reason,
     confidence: d.confidence,
+    source: d.source,
     inBook: candidateSymbols.has(d.symbol),
   }));
   if (discovered.length) console.log(`[brief] discovery surfaced ${discovered.length} names (${narrativeIdeas.filter((i) => i.inBook).length} already in the book)`);

@@ -41,10 +41,14 @@ async function loadResearchItems(): Promise<ResearchItem[]> {
   return items;
 }
 
-/** Run discovery over the current research feed. */
+/** Run discovery over the current research feed. Each returned name carries the
+ * human-readable source it came from (the newsletter/podcast), resolved from the
+ * cited item — so the brief can show where the idea originated, not just an id. */
 export async function discover(): Promise<DiscoveredTicker[]> {
   const items = await loadResearchItems();
   if (items.length === 0) return [];
   const validEvidenceIds = new Set(items.map((i) => i.id));
-  return discoverTickers(items, validEvidenceIds);
+  const sourceById = new Map(items.map((i) => [i.id, i.source]));
+  const discovered = await discoverTickers(items, validEvidenceIds);
+  return discovered.map((d) => ({ ...d, source: sourceById.get(d.evidenceId) ?? 'research' }));
 }
