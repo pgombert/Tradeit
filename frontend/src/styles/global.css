@@ -798,3 +798,12 @@ button[type='submit']:disabled {
 @media (max-width: 560px) {
   .source { grid-template-columns: 1fr; gap: 3px; }
 }
+
+/* ---- Page intro line (Portfolio, etc.) ---- */
+.page-intro {
+  color: var(--muted);
+  font-size: 0.98rem;
+  max-width: 70ch;
+  margin: 4px 0 24px;
+}
+.page-intro .muted { color: var(--muted); opacity: 0.8; }

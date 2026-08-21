@@ -29,6 +29,50 @@ export interface PositionDto {
   unrealizedPnl: string;
 }
 
+/** One holding, summed across every account that holds it (the consolidated view). */
+export interface AggregatedPosition {
+  symbol: string;
+  description: string | null;
+  /** Total shares across all accounts. */
+  quantity: string;
+  /** Blended average cost across accounts (total cost ÷ total shares). */
+  averagePrice: string;
+  /** Total market value across accounts. */
+  marketValue: string;
+  /** Total unrealized P&L across accounts. */
+  unrealizedPnl: string;
+  /** Share of the whole portfolio's invested value, 0..1. */
+  weight: number;
+  /** Masked labels of the accounts holding it, e.g. ["•••1234"]. */
+  accounts: string[];
+}
+
+/** One account included in the consolidated portfolio. */
+export interface PortfolioAccount {
+  label: string;
+  type: string | null;
+  totalValue: string | null;
+  positionCount: number;
+}
+
+/**
+ * The whole portfolio across every account on the Schwab login — the "see all
+ * positions at once" view. Reuses SchwabConnectionStatus for the not-connected
+ * states, minus CHOOSE_ACCOUNT (we include every account, never pick one).
+ */
+export interface PortfolioSnapshot {
+  status: SchwabConnectionStatus;
+  asOf: string | null;
+  /** Total liquidation value across accounts (positions + cash). */
+  totalValue: string | null;
+  /** Invested value — the sum of position market values (denominator for weights). */
+  investedValue: string | null;
+  positions: AggregatedPosition[];
+  accounts: PortfolioAccount[];
+  reauthAfter: string | null;
+  message: string | null;
+}
+
 /** One Schwab account to choose from when the login exposes more than one. */
 export interface SchwabAccountOption {
   /** Opaque token used to select this account (Schwab's account hash). */

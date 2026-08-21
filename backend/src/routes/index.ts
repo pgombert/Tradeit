@@ -200,6 +200,12 @@ router.get('/account', asyncHandler(async (_req, res) => {
   res.json(await schwabService.getAccountSnapshot());
 }));
 
+// The consolidated portfolio across every account on the Schwab login — all
+// positions at once, aggregated by symbol. Read-only.
+router.get('/portfolio', asyncHandler(async (_req, res) => {
+  res.json(await schwabService.getPortfolioSnapshot());
+}));
+
 router.get('/risk', (_req, res) => {
   // Equity is unknown until the account is connected in Phase 1.
   res.json(getRiskStatus(null, null));

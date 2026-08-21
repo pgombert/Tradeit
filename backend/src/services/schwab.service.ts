@@ -1,11 +1,22 @@
-import type { AccountSnapshot, SchwabAccountOption } from '@tradeit/shared';
+import { Prisma } from '@prisma/client';
+import type {
+  AccountSnapshot,
+  PortfolioSnapshot,
+  PositionDto,
+  SchwabAccountOption,
+} from '@tradeit/shared';
 import { env } from '../config/environment.js';
 import {
+  aggregatePositions,
+  decStr,
   firstAccountHash,
+  maskAccountNumber,
   SCHWAB_TRADER_BASE,
   toAccountOption,
   toAccountSnapshot,
+  toPositionDto,
   type AccountNumberEntry,
+  type AccountPositions,
   type SchwabAccount,
 } from './schwab.parse.js';
 import {
@@ -143,5 +154,81 @@ export async function getAccountSnapshot(): Promise<AccountSnapshot> {
       status: 'ERROR',
       message: error instanceof Error ? error.message : String(error),
     });
+  }
+}
+
+/** A not-connected portfolio — honest nulls, never a $0 for an unknown balance. */
+function barePortfolio(overrides: Partial<PortfolioSnapshot>): PortfolioSnapshot {
+  return {
+    status: 'DISCONNECTED',
+    asOf: null,
+    totalValue: null,
+    investedValue: null,
+    positions: [],
+    accounts: [],
+    reauthAfter: null,
+    message: null,
+    ...overrides,
+  };
+}
+
+/**
+ * The consolidated portfolio across EVERY account on the Schwab login — the "see
+ * all positions at once" view. Unlike getAccountSnapshot, it never asks which
+ * account to track; it includes them all and aggregates holdings by symbol.
+ * Read-only, like everything Schwab here.
+ */
+export async function getPortfolioSnapshot(): Promise<PortfolioSnapshot> {
+  if (!isConfigured()) {
+    return barePortfolio({ message: 'Schwab credentials are not set on the server.' });
+  }
+  try {
+    const accessToken = await getValidAccessToken();
+    const entries = await listAccountNumbers(accessToken);
+    if (entries.length === 0) {
+      return barePortfolio({ status: 'ERROR', message: 'Schwab returned no accounts for this login.' });
+    }
+
+    const accounts: AccountPositions[] = await Promise.all(
+      entries.map(async (e): Promise<AccountPositions> => {
+        const acct = await fetchAccount(e.hashValue, accessToken);
+        const sec = acct.securitiesAccount;
+        const positions = (sec?.positions ?? [])
+          .map(toPositionDto)
+          .filter((p): p is PositionDto => p !== null);
+        return {
+          label: maskAccountNumber(sec?.accountNumber),
+          type: sec?.type ?? null,
+          totalValue: decStr(sec?.currentBalances?.liquidationValue),
+          positions,
+        };
+      }),
+    );
+
+    const { positions, investedValue, accountSummaries } = aggregatePositions(accounts);
+    const totalValue = accountSummaries
+      .reduce((sum, a) => sum.add(new Prisma.Decimal(a.totalValue ?? '0')), new Prisma.Decimal(0))
+      .toString();
+
+    return {
+      status: 'CONNECTED',
+      asOf: new Date().toISOString(),
+      totalValue,
+      investedValue,
+      positions,
+      accounts: accountSummaries,
+      reauthAfter: null,
+      message: null,
+    };
+  } catch (error) {
+    if (error instanceof SchwabAuthError) {
+      return barePortfolio({
+        status: error.kind === 'EXPIRED' ? 'EXPIRED' : 'DISCONNECTED',
+        message: error.message,
+        reauthAfter: error.reauthAfter?.toISOString() ?? null,
+      });
+    }
+    console.error('[schwab] portfolio snapshot failed:', error);
+    return barePortfolio({ status: 'ERROR', message: error instanceof Error ? error.message : String(error) });
   }
 }

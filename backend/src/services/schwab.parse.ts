@@ -1,4 +1,11 @@
-import type { AccountSnapshot, PositionDto, SchwabAccountOption } from '@tradeit/shared';
+import { Prisma } from '@prisma/client';
+import type {
+  AccountSnapshot,
+  AggregatedPosition,
+  PortfolioAccount,
+  PositionDto,
+  SchwabAccountOption,
+} from '@tradeit/shared';
 
 /**
  * Pure Schwab helpers — no network, no database, so they can be tested against
@@ -149,6 +156,86 @@ export function toAccountOption(hashValue: string, account: SchwabAccount): Schw
     type: acct?.type ?? null,
     totalValue: decStr(acct?.currentBalances?.liquidationValue),
   };
+}
+
+/** One account's positions plus its identity, the input to aggregation. */
+export interface AccountPositions {
+  label: string;
+  type: string | null;
+  totalValue: string | null;
+  positions: PositionDto[];
+}
+
+const D = (v: string | number): Prisma.Decimal => new Prisma.Decimal(v);
+
+/**
+ * Consolidate positions across every account into one per-symbol view (CLAUDE.md
+ * rule 2 — all money summed as Decimal, stringified only at the edge). Shares,
+ * value, and P&L add across accounts; average cost is the blended total cost over
+ * total shares; weight is each holding's share of the portfolio's invested value.
+ */
+export function aggregatePositions(accounts: AccountPositions[]): {
+  positions: AggregatedPosition[];
+  investedValue: string;
+  accountSummaries: PortfolioAccount[];
+} {
+  interface Acc {
+    symbol: string;
+    description: string | null;
+    quantity: Prisma.Decimal;
+    marketValue: Prisma.Decimal;
+    unrealizedPnl: Prisma.Decimal;
+    accounts: Set<string>;
+  }
+  const bySymbol = new Map<string, Acc>();
+  let invested = D(0);
+
+  for (const acct of accounts) {
+    for (const p of acct.positions) {
+      const mv = D(p.marketValue);
+      invested = invested.add(mv);
+      const cur = bySymbol.get(p.symbol) ?? {
+        symbol: p.symbol,
+        description: p.description,
+        quantity: D(0),
+        marketValue: D(0),
+        unrealizedPnl: D(0),
+        accounts: new Set<string>(),
+      };
+      cur.quantity = cur.quantity.add(D(p.quantity));
+      cur.marketValue = cur.marketValue.add(mv);
+      cur.unrealizedPnl = cur.unrealizedPnl.add(D(p.unrealizedPnl));
+      cur.description ??= p.description;
+      cur.accounts.add(acct.label);
+      bySymbol.set(p.symbol, cur);
+    }
+  }
+
+  const positions: AggregatedPosition[] = [...bySymbol.values()]
+    .map((a) => {
+      const cost = a.marketValue.sub(a.unrealizedPnl); // total cost basis
+      const avg = a.quantity.isZero() ? D(0) : cost.div(a.quantity);
+      return {
+        symbol: a.symbol,
+        description: a.description,
+        quantity: a.quantity.toString(),
+        averagePrice: avg.toString(),
+        marketValue: a.marketValue.toString(),
+        unrealizedPnl: a.unrealizedPnl.toString(),
+        weight: invested.isZero() ? 0 : a.marketValue.div(invested).toNumber(),
+        accounts: [...a.accounts].sort(),
+      };
+    })
+    .sort((x, y) => Number(y.marketValue) - Number(x.marketValue));
+
+  const accountSummaries: PortfolioAccount[] = accounts.map((a) => ({
+    label: a.label,
+    type: a.type,
+    totalValue: a.totalValue,
+    positionCount: a.positions.length,
+  }));
+
+  return { positions, investedValue: invested.toString(), accountSummaries };
 }
 
 /** One Schwab position → the DTO, dropping anything with no symbol or no size. */

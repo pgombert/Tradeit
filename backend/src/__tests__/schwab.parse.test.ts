@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   accessTokenExpiryFrom,
+  aggregatePositions,
   basicAuthHeader,
   buildAuthorizeUrl,
   decStr,
@@ -12,9 +13,55 @@ import {
   toAccountOption,
   toAccountSnapshot,
   toPositionDto,
+  type AccountPositions,
   type SchwabAccount,
   type SchwabTokenResponse,
 } from '../services/schwab.parse.js';
+
+describe('aggregatePositions', () => {
+  const pos = (symbol: string, quantity: string, marketValue: string, unrealizedPnl: string, description: string | null = null): ReturnType<typeof toPositionDto> => ({
+    symbol,
+    description,
+    quantity,
+    averagePrice: '0',
+    marketValue,
+    unrealizedPnl,
+  });
+
+  it('sums a symbol held in two accounts and blends its average cost', () => {
+    const accounts: AccountPositions[] = [
+      { label: '•••1111', type: 'CASH', totalValue: '10000', positions: [pos('NVDA', '10', '1200', '200')] },
+      { label: '•••2222', type: 'MARGIN', totalValue: '5000', positions: [pos('NVDA', '5', '600', '100')] },
+    ];
+    const { positions, investedValue } = aggregatePositions(accounts);
+    expect(positions).toHaveLength(1);
+    const nvda = positions[0]!;
+    expect(nvda.quantity).toBe('15'); // 10 + 5
+    expect(nvda.marketValue).toBe('1800'); // 1200 + 600
+    expect(nvda.unrealizedPnl).toBe('300'); // 200 + 100
+    // total cost = value - pnl = 1800 - 300 = 1500; avg = 1500 / 15 = 100
+    expect(nvda.averagePrice).toBe('100');
+    expect(nvda.accounts).toEqual(['•••1111', '•••2222']);
+    expect(investedValue).toBe('1800');
+    expect(nvda.weight).toBeCloseTo(1, 6);
+  });
+
+  it('weights each holding by its share of invested value and sorts by size', () => {
+    const accounts: AccountPositions[] = [
+      { label: '•••1', type: null, totalValue: '4000', positions: [pos('AAPL', '10', '3000', '0'), pos('GM', '20', '1000', '0')] },
+    ];
+    const { positions } = aggregatePositions(accounts);
+    expect(positions.map((p) => p.symbol)).toEqual(['AAPL', 'GM']); // larger first
+    expect(positions[0]!.weight).toBeCloseTo(0.75, 6);
+    expect(positions[1]!.weight).toBeCloseTo(0.25, 6);
+  });
+
+  it('is empty (never NaN) with no positions', () => {
+    const { positions, investedValue } = aggregatePositions([{ label: '•••1', type: null, totalValue: '0', positions: [] }]);
+    expect(positions).toEqual([]);
+    expect(investedValue).toBe('0');
+  });
+});
 
 describe('basicAuthHeader', () => {
   it('base64-encodes client:secret for the token endpoint', () => {
