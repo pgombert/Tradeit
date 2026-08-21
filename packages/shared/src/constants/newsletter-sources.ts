@@ -91,6 +91,25 @@ export const NEWSLETTER_SOURCES: readonly NewsletterSourceDef[] = [
     tier: 1,
     match: ['earningswhispers.com'],
   },
+
+  // Named 2026-08-20 after they started landing in the inbox as unrecognized.
+  {
+    // Valuation deep-dives, often on a single name — a strong idea source.
+    key: 'damodaran-musings',
+    name: 'Aswath Damodaran — Musings on Markets',
+    author: 'Aswath Damodaran',
+    stage: 'FACTOR',
+    tier: 1,
+    match: ['aswathdamodaran@substack.com', 'aswathdamodaran'],
+  },
+  {
+    key: 'epsilon-theory',
+    name: 'Epsilon Theory',
+    author: 'Ben Hunt',
+    stage: 'REGIME',
+    tier: 1,
+    match: ['epsilontheory.com'],
+  },
 ] as const;
 
 /** Every distinct From-match token across the registry — the Gmail query is built from these. */
