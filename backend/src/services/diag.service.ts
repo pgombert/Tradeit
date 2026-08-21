@@ -66,4 +66,31 @@ export async function runDiagnostics(): Promise<void> {
     console.log(`[diag]   dated ${r.observedAt.toISOString().slice(0, 10)}, ${textLen(r.payload)} chars — ${title}`);
   }
   console.log(`[diag] today=${now.toISOString().slice(0, 10)}, discovery cutoff=${cutoff.toISOString().slice(0, 10)}`);
+
+  // Unrecognized senders — newsletters that landed but aren't in the source
+  // registry yet, so we can name them. Dedupe by from-address.
+  const letters = await prisma.observation.findMany({
+    where: { kind: 'LETTER_ITEM', observedAt: { gte: cutoff } },
+    orderBy: { observedAt: 'desc' },
+    select: { payload: true },
+    take: 500,
+  });
+  const unknown = new Map<string, { from: string; subject: string; count: number }>();
+  for (const l of letters) {
+    const p = (l.payload ?? {}) as Record<string, unknown>;
+    if (p.recognized === true) continue;
+    const fromAddress = typeof p.fromAddress === 'string' ? p.fromAddress : '';
+    if (!fromAddress) continue;
+    const e = unknown.get(fromAddress) ?? {
+      from: typeof p.from === 'string' ? p.from : fromAddress,
+      subject: typeof p.subject === 'string' ? p.subject : '',
+      count: 0,
+    };
+    e.count += 1;
+    unknown.set(fromAddress, e);
+  }
+  console.log(`[diag] ${unknown.size} unrecognized sender(s):`);
+  for (const [addr, e] of unknown) {
+    console.log(`[diag]   UNNAMED <${addr}> "${e.from}" ×${e.count} — e.g. ${e.subject.slice(0, 70)}`);
+  }
 }
