@@ -14,6 +14,7 @@ import { collectWeb } from '../collectors/web.collector.js';
 import { generateBrief } from '../services/brief-generate.service.js';
 import { runDiagnostics } from '../services/diag.service.js';
 import { discover } from '../services/discovery.service.js';
+import { generateMorningReview } from '../services/morning-review.service.js';
 import { prisma } from '../lib/prisma.js';
 
 // Order matters for a full run: `derived` reads what `fred` just wrote. `prices`
@@ -30,6 +31,9 @@ const COLLECTORS: Record<string, () => Promise<unknown>> = {
   // collectors wrote, is slow and paid, and is EXCLUDED from the default run —
   // trigger it explicitly (`collect -- brief`) or on its own weekly schedule.
   brief: generateBrief,
+  // `morning` is the pre-market portfolio check: every holding through the
+  // momentum rules against fresh data → Hold/Trim/Exit. Advisory; never trades.
+  morning: generateMorningReview,
   // `diag` is a read-only inventory of the research feed — never writes; used to
   // see whether transcripts are present, recent, and carry real text.
   diag: runDiagnostics,
@@ -42,9 +46,8 @@ const COLLECTORS: Record<string, () => Promise<unknown>> = {
 
 /** The default full run — every collector, but not the paid `brief` or the
  * on-demand read-only `diag` step. */
-const DEFAULT_STEPS = Object.keys(COLLECTORS).filter(
-  (n) => n !== 'brief' && n !== 'diag' && n !== 'discover',
-);
+const ON_DEMAND = new Set(['brief', 'morning', 'diag', 'discover']);
+const DEFAULT_STEPS = Object.keys(COLLECTORS).filter((n) => !ON_DEMAND.has(n));
 
 async function main(): Promise<void> {
   const requested = process.argv.slice(2).filter((a) => !a.startsWith('-'));

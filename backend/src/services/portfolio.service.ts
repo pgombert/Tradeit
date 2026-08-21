@@ -45,7 +45,7 @@ async function latestClose(symbol: string): Promise<number | null> {
 const HOLD_DAYS = 15;
 
 /** Symbols with a scheduled earnings date inside the coming hold window. */
-async function symbolsReportingSoon(symbols: string[]): Promise<Set<string>> {
+export async function symbolsReportingSoon(symbols: string[]): Promise<Set<string>> {
   const now = new Date();
   const until = new Date();
   until.setDate(until.getDate() + HOLD_DAYS);

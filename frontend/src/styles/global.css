@@ -807,3 +807,64 @@ button[type='submit']:disabled {
   margin: 4px 0 24px;
 }
 .page-intro .muted { color: var(--muted); opacity: 0.8; }
+
+/* ---- Morning check: holding review cards ---- */
+.review-list { display: flex; flex-direction: column; gap: 12px; }
+.review-card {
+  background: var(--panel, var(--card, #fff));
+  border: 1px solid var(--rule-soft);
+  border-left: 3px solid var(--rule);
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+.review-card.exit { border-left-color: var(--neg); }
+.review-card.trim { border-left-color: var(--orange); }
+.review-card.hold { border-left-color: var(--pos); }
+.review-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.review-name strong { font-family: var(--mono); font-size: 1rem; }
+.review-reasons {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.review-reasons li {
+  font-size: 0.94rem;
+  color: var(--fg, inherit);
+  padding-left: 14px;
+  position: relative;
+  line-height: 1.45;
+}
+.review-reasons li::before {
+  content: "";
+  position: absolute;
+  left: 2px; top: 8px;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.review-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--fg, inherit);
+  padding-top: 10px;
+  border-top: 1px solid var(--rule-soft);
+}
+.review-facts .fk {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.68rem;
+  margin-right: 3px;
+}

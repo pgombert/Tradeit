@@ -171,6 +171,9 @@ export function Dashboard() {
       <header className="topbar">
         <h1 className="wordmark">Tradeit</h1>
         <div className="topbar-meta">
+          <Link to="/morning" className="linkish">
+            Morning Check →
+          </Link>
           <Link to="/portfolio" className="linkish">
             Portfolio →
           </Link>

@@ -72,6 +72,9 @@ export function Portfolio() {
           <Link to="/" className="linkish">
             ← Dashboard
           </Link>
+          <Link to="/morning" className="linkish">
+            Morning check →
+          </Link>
           <Link to="/brief" className="linkish">
             Weekly brief →
           </Link>

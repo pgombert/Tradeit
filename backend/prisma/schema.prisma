@@ -248,3 +248,15 @@ model WeeklyBrief {
   @@index([generatedAt(sort: Desc)])
   @@map("weekly_briefs")
 }
+
+model MorningReview {
+  id          String   @id @default(uuid())
+  asOf        DateTime @db.Date
+  generatedAt DateTime @default(now()) @map("generated_at")
+
+  /// The whole check: every holding's facts and its Hold/Trim/Exit verdict.
+  payload Json
+
+  @@index([generatedAt(sort: Desc)])
+  @@map("morning_reviews")
+}

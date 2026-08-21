@@ -185,6 +185,46 @@ async function collectOne(
  * connected (or the login expired) the run fails with the actionable reconnect
  * message from the token store, rather than silently writing nothing.
  */
+/**
+ * Ensure daily price history exists for an arbitrary list of symbols — used by
+ * the morning check so it can assess holdings outside the tracked universe.
+ * Creates a Security row (EQUITY) for any it doesn't know, then pulls history the
+ * same way the universe run does. If Schwab isn't connected it returns quietly.
+ */
+export async function ensureSymbolsPriced(symbols: string[]): Promise<void> {
+  const unique = [...new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean))];
+  if (unique.length === 0) return;
+
+  let accessToken: string;
+  try {
+    accessToken = await getValidAccessToken();
+  } catch (err) {
+    if (err instanceof SchwabAuthError) {
+      console.warn(`[prices] held-symbol pull skipped — ${err.message}`);
+      return;
+    }
+    throw err;
+  }
+
+  const now = new Date();
+  let first = true;
+  for (const symbol of unique) {
+    const security = await prisma.security.upsert({
+      where: { symbol },
+      update: {},
+      create: { symbol, name: symbol, class: 'EQUITY' },
+      select: { id: true },
+    });
+    if (!first) await sleep(FETCH_INTERVAL_MS);
+    first = false;
+    try {
+      await collectOne(symbol, security.id, accessToken, now);
+    } catch (err) {
+      console.warn(`[prices] held-symbol ${symbol} failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+}
+
 export async function collectSchwabPrices(): Promise<PriceCollectionResult[]> {
   const run = await prisma.collectorRun.create({
     data: { collector: 'prices', status: 'RUNNING' },

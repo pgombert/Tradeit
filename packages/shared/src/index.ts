@@ -13,6 +13,7 @@ export * from './constants/web-sources.js';
 export * from './engine/regime.js';
 export * from './engine/instrument-selection.js';
 export * from './engine/portfolio.js';
+export * from './engine/holding-review.js';
 export * from './engine/price-indicators.js';
 export * from './engine/screens/types.js';
 export * from './engine/screens/momentum.js';

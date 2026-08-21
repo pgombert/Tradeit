@@ -3,6 +3,7 @@ import type {
   AccountSnapshot,
   AttributionSummary,
   AuthTokens,
+  MorningReview,
   PortfolioSnapshot,
   EconSeriesDetail,
   EconSeriesSummary,
@@ -140,6 +141,7 @@ export const dataApi = {
     api.get<EconSeriesDetail>(`/econ/series/${id}`, { params: { days } }).then((r) => r.data),
   account: () => api.get<AccountSnapshot>('/account').then((r) => r.data),
   portfolio: () => api.get<PortfolioSnapshot>('/portfolio').then((r) => r.data),
+  morningReview: () => api.get<MorningReview | null>('/morning-review').then((r) => r.data),
   risk: () => api.get<RiskStatus>('/risk').then((r) => r.data),
   collectorRuns: () => api.get<CollectorRunDto[]>('/collectors/runs').then((r) => r.data),
 };

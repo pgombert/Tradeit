@@ -7,6 +7,7 @@
  * It never supplies prices or sizes: those come from our own data (Stage 5), so
  * a hallucinated number can never become a tradeable figure (CLAUDE.md rule 1).
  */
+import type { HoldingVerdict } from '../engine/holding-review.js';
 import type { Conviction, Direction } from '../engine/instrument-selection.js';
 import type { Portfolio } from '../engine/portfolio.js';
 import type { Candidate, DossierRegime } from './candidate.js';
@@ -90,4 +91,40 @@ export interface StoredBrief {
   narrativeIdeas: NarrativeIdea[];
   /** True when the AI stages ran; false means a rules-only fallback. */
   aiRan: boolean;
+}
+
+/** One holding in the morning check: its facts plus the Hold/Trim/Exit verdict. */
+export interface HoldingReviewItem {
+  symbol: string;
+  name: string | null;
+  quantity: string;
+  marketValue: string;
+  weight: number;
+  /** Return since cost basis, or null when cost is unknown. */
+  gainFromCost: number | null;
+  price: number | null;
+  return1w: number | null;
+  return1m: number | null;
+  return3m: number | null;
+  /** Which accounts hold it (masked labels). */
+  accounts: string[];
+  verdict: HoldingVerdict;
+}
+
+/**
+ * The morning portfolio check — every holding run through the momentum rules
+ * against the day's fresh data, with a Hold/Trim/Exit call and the reasons.
+ * Advisory only; nothing here trades.
+ */
+export interface MorningReview {
+  asOf: string;
+  generatedAt: string;
+  /** False when Schwab wasn't connected — then `note` explains and items is empty. */
+  connected: boolean;
+  /** The market regime label the check ran under. */
+  regime: string;
+  totalValue: string | null;
+  summary: { exit: number; trim: number; hold: number };
+  items: HoldingReviewItem[];
+  note: string | null;
 }
